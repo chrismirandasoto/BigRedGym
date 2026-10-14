@@ -92,7 +92,7 @@ files that cannot be committed to this repository.
 Place these files under `thirdparty/vlearn/` as described in
 [`thirdparty/README.md`](../thirdparty/README.md):
 
-- `vlearn-0.3.14+cu130-cp311-cp311-linux_x86_64.whl`
+- `vlearn-0.3.15+cu130-cp311-cp311-linux_x86_64.whl`
 - `License.key`
 - `TurboActivate.dat`
 

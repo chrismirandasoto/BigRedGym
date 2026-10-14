@@ -115,6 +115,8 @@ class Go2TrotRunnerCfg(Go2RunnerCfg):
             "dof_pos_obs",
             "dof_vel",
             "dof_pos_target",
+            "phase_obs",
+            "phase_frequency",
         ]
         normalize_obs = False
         smooth_exploration = False
@@ -145,6 +147,8 @@ class Go2TrotRunnerCfg(Go2RunnerCfg):
             "dof_pos_obs",
             "dof_vel",
             "dof_pos_target",
+            "phase_obs",
+            "phase_frequency",
         ]
         normalize_obs = False
 

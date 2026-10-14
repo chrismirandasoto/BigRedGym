@@ -104,6 +104,10 @@ Optional arguments:
 --original_cfg: Load environment and runner configs saved with the selected run.
 ```
 
+Go2Trot policies observe sine/cosine gait phase and phase frequency. To resume or
+play an older checkpoint trained without these inputs, add `--original_cfg` to
+use the configuration saved with that run.
+
 The automated regression suite runs with `uv run --frozen python -m pytest -q`.
 See [limitations and validation scope](genAI_skills/README_MUJOCO.md#limitations-and-validation-scope)
 for what the retained tests cover.

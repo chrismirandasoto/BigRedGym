@@ -800,7 +800,7 @@ class VSimBackend(SimBackend):
     @property
     def special_keys(self):
         """Translate shared special-key names into vlearn's UserKey enum."""
-        return {"UP": self._v.UserKey.Up, "DOWN": self._v.UserKey.Down}
+        return {"UP": self._v.UserKey.UpArrow, "DOWN": self._v.UserKey.DownArrow}
 
     @property
     def escape_key(self):
