@@ -63,7 +63,7 @@ class Go2TrotCfg(Go2Cfg):
 
         class ranges(Go2Cfg.commands.ranges):
             lin_vel_x = [-1.0, 0.0, 1.0, 3.0]
-            base_height = [0.20, 0.45]
+            base_height = [0.28, 0.42]
 
     class push_robots(Go2Cfg.push_robots):
         toggle = True
@@ -158,7 +158,7 @@ class Go2TrotRunnerCfg(Go2RunnerCfg):
             class weights:
                 tracking_lin_vel = 4.0
                 tracking_ang_vel = 2.0
-                tracking_base_height = 2.0
+                tracking_base_height = 1.0
                 lin_vel_z = 0.0
                 ang_vel_xy = 0.01
                 orientation = 1.0
@@ -167,8 +167,8 @@ class Go2TrotRunnerCfg(Go2RunnerCfg):
                 stand_still = 0.0
                 dof_pos_limits = 0.0
                 feet_contact_forces = 0.0
-                dof_near_home = 0.0
-                min_base_height = 0.0
+                dof_near_home = 0.5
+                min_base_height = 0.3
                 action_rate = 0.25
                 action_rate2 = 0.025
                 trot_support = 0.625
