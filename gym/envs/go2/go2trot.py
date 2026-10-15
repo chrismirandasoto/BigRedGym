@@ -256,7 +256,7 @@ class Go2Trot(LeggedRobot):
     #added reward for tracking base height
     def _reward_tracking_base_height(self):
         """Tracking of commanded base height"""
-        error = (self.commands[:, 3] - self.base_height.flatten()) / 0.1 #added scaling factor to normalize error
+        error = (self.commands[:, 3] - self.base_height.flatten()) / 0.2 #added scaling factor to normalize error
         return self._sqrdexp(error)
 
     def _reward_dof_vel(self):
