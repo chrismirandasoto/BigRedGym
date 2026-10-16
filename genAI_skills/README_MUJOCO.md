@@ -83,6 +83,23 @@ uv run --frozen scripts/train.py --task mini_cheetah --device cuda:0 \
     --num_envs 4096 --headless
 ```
 
+### Go2 CPU visualization
+
+Go2 and Go2Trot's MuJoCo CPU viewer renders collision shapes by default
+(`asset.mujoco_visual_model = None`). No VSim checkout or external mesh assets
+are needed.
+
+Detailed meshes remain optional: set `asset.mujoco_visual_model` to
+`"{GYM_ROOT_DIR}/thirdparty/vlearn/assets/go2/go2.xml"` in the Go2 config if
+you have that XML and its sibling `assets/*.obj` files. Only meshes and
+material colors are imported; physics still comes from our URDF. Collision
+shapes are hidden in viewer geometry group 3 when detailed meshes are enabled.
+Headless MuJoCo CPU and Warp do not load these optional visuals.
+
+When using an older saved config with `--original_cfg`, set its
+`asset.mujoco_visual_model` to `None` to render collision shapes without the
+external assets.
+
 ### Optional vsim setup
 
 vsim is a closed-source, node-locked backend. Its wheel requires Linux x86_64
@@ -136,20 +153,13 @@ uv run --frozen --extra vsim --env-file .env.vsim scripts/train.py --task mini_c
 
 Never commit the wheel, license files, or activation data.
 
-Go2 and Go2Trot also use the VSim repository's visual meshes from
+Go2 and Go2Trot's VSim backend uses the SDK repository's visual meshes from
 `thirdparty/vlearn/assets/go2/assets/` (the `*.obj` files). Keep that directory
 from the SDK checkout, along with `assets/licenses/go2-LICENSE.txt`. If your
 SDK is elsewhere, set `asset.vsim_visual_mesh_dir` in the Go2 config to its
 `assets/go2/assets` directory. The wheel alone does not include these meshes.
 VSim substitutes these visuals before converting our URDF; joints, collisions,
 and inertias still come from our robot, not the vendor's `go2_og.vsim`.
-The MuJoCo CPU viewer uses the same OBJ files, with material colors read from
-`thirdparty/vlearn/assets/go2/go2.xml`. `asset.mujoco_visual_model` selects this
-visual donor; its dynamics are ignored. Robot collision shapes are hidden in
-viewer geometry group 3, while the detailed visual surfaces remain visible.
-Headless MuJoCo CPU and Warp do not require these assets. An older saved config
-used with `--original_cfg` needs the `mujoco_visual_model` field added to its
-asset config to enable the detailed visuals; `None` keeps the basic rendering.
 
 ### Optional Unitree Go2 deployment setup
 
@@ -282,6 +292,13 @@ remaining gaps and optional-backend support.
 
 ### W&B logging
 
+Use `--run_name tracking_trial` to label an individual training run. With
+`--task go2trot`, the log directory is
+`logs/go2trot/<timestamp>_tracking_trial/` and the W&B display name is
+`<timestamp>_tracking_trial`. `--experiment_name` changes the parent experiment
+folder under `logs/`; `--run_name` changes the new run's label, including when
+resuming with `--original_cfg`. Omitting either option keeps its config value.
+
 Ordinary W&B logging remains supported. Copy the template
 [`user/wandb_config_default.json`](../user/wandb_config_default.json) to the local
 `user/wandb_config.json` and set `entity` and `project`, or provide
@@ -407,6 +424,8 @@ uv run --frozen scripts/train.py [OPTIONS]
   --num_envs INT      Number of parallel environments (default: from task config)
   --max_iterations INT Training iterations (default: from task config)
   --seed INT          Random seed
+  --experiment_name TEXT Experiment folder under logs/ (default: task config)
+  --run_name TEXT      Run label appended to the timestamp in logs and W&B
   --resume            Resume model and optimizer state
   --load_run TEXT     Run directory below the selected experiment
   --checkpoint INT    Checkpoint iteration (default: latest)
