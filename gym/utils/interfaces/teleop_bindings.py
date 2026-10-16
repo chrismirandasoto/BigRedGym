@@ -53,7 +53,7 @@ HELP_LINES = (
     "  I/K           forward / back",
     "  J/L           strafe left / strafe right",
     "  N/M           yaw left / yaw right",
-    "  Up/Down       up / down (command effects: student TODO)",
+    "  Up/Down       raise/lower base height",
     "  R             reset envs",
     "  Esc / window  quit",
     "  commands step in 1/5 increments of max",
@@ -79,8 +79,14 @@ class TeleopCommands:
         self.max_vel_yaw = 2.0
         self.increment_yaw = self.max_vel_yaw * 0.2
 
+        self.min_base_height = 0.30
+        self.max_base_height = 0.42
+        self.increment_height = (self.max_base_height - self.min_base_height) * 0.2
+
         env.commands[:] = 0.0
         env.commands[:, 0] = 1.0  # seed forward velocity so motion is visible
+        env.commands[:, 3] = 0.40  # starting height
+
         if hasattr(env.cfg, "commands"):
             env.cfg.commands.resampling_time = env.max_episode_length_s + 1
 
@@ -101,6 +107,12 @@ class TeleopCommands:
             c[:, 2] = torch.clamp(c[:, 2] + self.increment_yaw, max=self.max_vel_yaw)
         elif action == "yaw_right":
             c[:, 2] = torch.clamp(c[:, 2] - self.increment_yaw, min=-self.max_vel_yaw)
+        elif action == "up":
+            c[:, 3] = torch.clamp(c[:, 3] + self.increment_height, max=self.max_base_height)
+            #print("height cmd:", c[0, 3].item()) #checks for height command changes
+        elif action == "down":
+            c[:, 3] = torch.clamp(c[:, 3] - self.increment_height, min=self.min_base_height)
+            #print("height cmd:", c[0, 3].item()) #checks for height command changes
         elif action == "reset":
             self.env.timed_out[:] = True
             self.env.reset()

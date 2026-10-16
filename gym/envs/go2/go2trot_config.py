@@ -65,6 +65,7 @@ class Go2TrotCfg(Go2Cfg):
             lin_vel_x = [-0.5, 0.0, 0.5, 1.0, 2.0]
             lin_vel_y = 0.5
             yaw_vel = 1.5
+            base_height = [0.30, 0.42]
 
     class push_robots(Go2Cfg.push_robots):
         toggle = True
@@ -99,6 +100,7 @@ class Go2TrotCfg(Go2Cfg):
         # Canonical RobotLayout order is FL, FR, RL, RR, with
         # hip, thigh, calf inside each leg. Backends map native order to it.
         base_height = 0.3
+        commands = [3, 1, 3, 0.45]
         dof_pos = 4 * [1.0472, 2.53075, 0.94247]
         dof_pos_obs = dof_pos
         # Residual radians per policy unit, independent of observation ranges.
@@ -159,6 +161,7 @@ class Go2TrotRunnerCfg(Go2RunnerCfg):
             class weights:
                 tracking_lin_vel = 4.0
                 tracking_ang_vel = 4.0
+                tracking_base_height = 4.0
                 lin_vel_z = 0.0
                 ang_vel_xy = 0.01
                 orientation = 1.0
@@ -167,8 +170,8 @@ class Go2TrotRunnerCfg(Go2RunnerCfg):
                 stand_still = 0.0
                 dof_pos_limits = 0.0
                 feet_contact_forces = 0.0
-                dof_near_home = 0.0
-                min_base_height = 0.5
+                dof_near_home = 0.05
+                min_base_height = 0.3
                 action_rate = 0.1
                 action_rate2 = 0.05
                 trot_support = 3.0

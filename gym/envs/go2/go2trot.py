@@ -13,6 +13,12 @@ class Go2Trot(LeggedRobot):
     def _init_buffers(self):
         super()._init_buffers()
 
+        # replace parent 3 column command buffer with 4 to include height
+        # commands: [lin_vel_x, lin_vel_y, yaw_vel, base_height]
+        self.commands = torch.zeros(
+            self.num_envs, 4, dtype=torch.float, device=self.device
+        )
+
         self._actuated_dof_pos_limits = self.dof_pos_limits.index_select(
             0, self.actuated_dof_indices
         )
@@ -108,7 +114,7 @@ class Go2Trot(LeggedRobot):
             drop = command_mask.unsqueeze(1) & (
                 torch.rand(self.num_envs, 1, device=self.device) >= 0.8
             )
-            self.commands[:, 1:].masked_fill_(drop, 0.0)
+            self.commands[:, 1:3].masked_fill_(drop, 0.0)
             drop = command_mask.unsqueeze(1) & (
                 torch.rand(self.num_envs, 1, device=self.device) >= 0.8
             )
@@ -116,7 +122,15 @@ class Go2Trot(LeggedRobot):
             drop = command_mask.unsqueeze(1) & (
                 torch.rand(self.num_envs, 1, device=self.device) >= 0.9
             )
-            self.commands.masked_fill_(drop, 0.0)
+            self.commands[:, :3].masked_fill_(drop, 0.0)
+        #command base height, not zeroed since don't want height of zero
+        height = torch_rand_float(
+            self.command_ranges["base_height"][0],
+            self.command_ranges["base_height"][1],
+            shape=(self.num_envs, 1),
+            device=self.device,
+        ).squeeze(1)
+        masked_update(self.commands[:, 3], height, command_mask)
 
     def _reset_idx(self, reset_mask):
         super()._reset_idx(reset_mask)
@@ -219,6 +233,12 @@ class Go2Trot(LeggedRobot):
         """Tracking of angular velocity commands (yaw)"""
         ang_vel_error = (self.commands[:, 2] - self.base_ang_vel[:, 2]) / 2.5
         return self._sqrdexp(ang_vel_error)
+
+    #added reward for tracking base height
+    def _reward_tracking_base_height(self):
+        """Tracking of commanded base height"""
+        error = (self.commands[:, 3] - self.base_height.flatten()) / 0.2 #added scaling factor to normalize error
+        return self._sqrdexp(error)
 
     def _reward_dof_vel(self):
         """Penalize dof velocities"""
