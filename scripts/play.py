@@ -131,16 +131,39 @@ def setup(args):
 
 
 def play(env, runner):
-    n_steps = 10 * int(env.max_episode_length)
-    for _ in range(n_steps):
-        runner.set_actions(
-            runner.actor_cfg["actions"],
-            runner.get_inference_actions(),
-            runner.actor_cfg["disable_actions"],
-        )
-        env.step()
-        env.check_exit()
+    import matplotlib.pyplot as plt
+    import numpy as np
 
+    n_steps = 10 * int(env.max_episode_length)
+    commanded_heights = []
+    actual_heights = []
+
+    try:
+        for _ in range(n_steps):
+            runner.set_actions(
+                runner.actor_cfg["actions"],
+                runner.get_inference_actions(),
+                runner.actor_cfg["disable_actions"],
+            )
+            env.step()
+            commanded_heights.append(env.commands[0, 3].item())
+            actual_heights.append(env.base_height[0, 0].item())
+            env.check_exit()
+    finally:
+        if commanded_heights:
+            times = np.arange(len(commanded_heights)) * env.dt * env.cfg.control.decimation
+            fig, ax = plt.subplots(figsize=(10, 4))
+            ax.plot(times, commanded_heights, label="commanded", lw=2)
+            ax.plot(times, actual_heights, label="actual", lw=1.5)
+            ax.set_xlabel("time [s]")
+            ax.set_ylabel("base height [m]")
+            ax.set_title("Commanded vs. actual base height")
+            ax.grid(alpha=0.3)
+            ax.legend()
+            fig.tight_layout()
+            fig.savefig("height_tracking.pdf")
+            print(f"saved height_tracking.pdf ({len(times)} samples, "
+                f"{times[-1]:.1f} s)")
 
 if __name__ == "__main__":
     args = get_play_args()

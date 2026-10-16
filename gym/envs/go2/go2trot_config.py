@@ -63,7 +63,7 @@ class Go2TrotCfg(Go2Cfg):
 
         class ranges(Go2Cfg.commands.ranges):
             lin_vel_x = [-1.0, 0.0, 1.0, 3.0]
-            base_height = [0.28, 0.42]
+            base_height = [0.30, 0.42]
 
     class push_robots(Go2Cfg.push_robots):
         toggle = True

@@ -79,8 +79,8 @@ class TeleopCommands:
         self.max_vel_yaw = 2.0
         self.increment_yaw = self.max_vel_yaw * 0.2
 
-        self.min_base_height = 0.20
-        self.max_base_height = 0.45
+        self.min_base_height = 0.30
+        self.max_base_height = 0.42
         self.increment_height = (self.max_base_height - self.min_base_height) * 0.2
 
         env.commands[:] = 0.0
