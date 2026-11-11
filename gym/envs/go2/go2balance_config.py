@@ -32,6 +32,15 @@ class Go2BalanceCfg(Go2HandstandCfg):
         settled_hold_s = 0.5
         undisturbed_fraction = 0.25
 
+    class tilt_test:
+        # Evaluation resets: rigid tilt about the front-foot line, on top of
+        # the nominal top pose. Positive is over-rotation (kick-up direction).
+        enabled = False
+        angle_degrees = [-30.0, 30.0]
+        angular_velocity = [-3.0, 3.0]  # rad/s about the same line
+        sampling = "grid"  # "grid": one cell per robot; "uniform": random
+        grid = [21, 21]  # angle cells, rate cells
+
     class balance_failure:
         min_normal_force = 1.0  # newtons per front foot
         contact_grace_seconds = 0.15

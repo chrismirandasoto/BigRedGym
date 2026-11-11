@@ -5,6 +5,12 @@ import math
 import torch
 
 from gym.envs.go2.go2handstand import Go2Handstand
+from gym.envs.go2.handstand_curriculum import foot_positions
+from gym.envs.go2.tilt_test import (
+    sample_tilt,
+    tilt_about_front_feet,
+    validate_tilt_test,
+)
 
 
 class BalanceDiagnostics:
@@ -84,6 +90,30 @@ class Go2Balance(Go2Handstand):
         self._balance_reference = self.dof_pos.new_tensor(front * 2 + rear * 2).expand(
             self.num_envs, -1
         )
+        # Configs saved before the tilt test existed simply leave it off.
+        self._tilt_test = getattr(self.cfg, "tilt_test", None)
+        if self._tilt_test is not None and not self._tilt_test.enabled:
+            self._tilt_test = None
+        if self._tilt_test is not None:
+            validate_tilt_test(self._tilt_test)
+        self.initial_tilt = torch.zeros(self.num_envs, device=self.device)
+        self.initial_tilt_rate = torch.zeros_like(self.initial_tilt)
+
+    def reset_to_handstand(self, reset_mask):
+        """Optionally tilt the nominal reset about the planted front feet."""
+        super().reset_to_handstand(reset_mask)
+        self.initial_tilt[reset_mask] = 0
+        self.initial_tilt_rate[reset_mask] = 0
+        ids = reset_mask.nonzero(as_tuple=False).flatten()
+        if self._tilt_test is None or ids.numel() == 0:
+            return
+        angle, rate = sample_tilt(ids, self._tilt_test, self.device)
+        joints = self.dof_pos[ids[:, None], self.actuated_dof_indices].view(-1, 4, 3)
+        self.root_states[ids] = tilt_about_front_feet(
+            self.root_states[ids], foot_positions(joints), angle, rate
+        )
+        self.initial_tilt[ids] = angle
+        self.initial_tilt_rate[ids] = rate
 
     def _standing_posture(self):
         # Go2's torque controller uses this as its zero-action reference.

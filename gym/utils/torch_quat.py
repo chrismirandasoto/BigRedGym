@@ -45,6 +45,21 @@ def quat_from_euler_xyz(
     return torch.stack([qx, qy, qz, qw], dim=-1)
 
 
+def quat_mul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    """Hamilton product a * b: rotate by b, then by a.  Both are [x, y, z, w]."""
+    av, aw = a[..., :3], a[..., 3:]
+    bv, bw = b[..., :3], b[..., 3:]
+    xyz = aw * bv + bw * av + torch.cross(av, bv, dim=-1)
+    w = aw * bw - (av * bv).sum(dim=-1, keepdim=True)
+    return torch.cat([xyz, w], dim=-1)
+
+
+def quat_from_angle_axis(angle: torch.Tensor, axis: torch.Tensor) -> torch.Tensor:
+    """Right-handed rotation by angle [rad] about axis, as [x, y, z, w]."""
+    half = angle.unsqueeze(-1) * 0.5
+    return torch.cat([normalize(axis) * half.sin(), half.cos()], dim=-1)
+
+
 def get_axis_params(value, axis_idx, x_val=0.0, dtype=float, n_dims=3):
     """Returns a list with `value` at `axis_idx`, `x_val` elsewhere."""
     params = [x_val] * n_dims

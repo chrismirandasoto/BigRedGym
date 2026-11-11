@@ -14,6 +14,21 @@ from gym.envs.go2.go2_config import (
 from gym.utils.torch_quat import quat_apply, quat_from_euler_xyz
 
 
+def foot_positions(joints):
+    """Body-frame foot centres for (n, 4, 3) joint angles, FL FR RL RR.
+
+    FK for Go2's equal-link legs, with zero hip abduction.
+    """
+    thigh, calf = joints[..., 1], joints[..., 2]
+    feet = torch.zeros_like(joints)
+    feet[..., 0] = joints.new_tensor(GO2_HIP_X) - LEG_LENGTH * (
+        thigh.sin() + (thigh + calf).sin()
+    )
+    feet[..., 1] = joints.new_tensor(GO2_FOOT_Y)
+    feet[..., 2] = -LEG_LENGTH * (thigh.cos() + (thigh + calf).cos())
+    return feet
+
+
 class HandstandCurriculum:
     def _init_handstand_curriculum(self):
         c = self.cfg.handstand_curriculum
@@ -158,14 +173,7 @@ class HandstandCurriculum:
             STANDING_THIGH * (1 - fraction) + (math.pi / 2 - knee / 2) * fraction
         )
         joints[:, 2:, 1] = rear_thigh[:, None]
-        # FK for Go2's equal-link legs, with zero hip abduction.
-        thigh, calf = joints[:, :, 1], joints[:, :, 2]
-        feet = torch.zeros(count, 4, 3, device=self.device)
-        feet[:, :, 0] = torch.tensor(GO2_HIP_X, device=self.device) - LEG_LENGTH * (
-            thigh.sin() + (thigh + calf).sin()
-        )
-        feet[:, :, 1] = torch.tensor(GO2_FOOT_Y, device=self.device)
-        feet[:, :, 2] = -LEG_LENGTH * (thigh.cos() + (thigh + calf).cos())
+        feet = foot_positions(joints)
         world_feet = quat_apply(quat[:, None, :].expand(-1, 4, -1), feet)
         root = torch.zeros(count, 13, device=self.device)
         root[:, 2] = FOOT_RADIUS + c.ground_clearance - world_feet[:, :, 2].amin(dim=1)

@@ -11,6 +11,9 @@ from gym.envs.go2.reachability_physics import ContactSampler
 class Go2Reachability(Go2Balance):
     def _init_buffers(self):
         super()._init_buffers()
+        if self._tilt_test is not None:
+            # Rear-joint sampling below rewrites the root velocity.
+            raise ValueError("the tilt test runs on go2balance, not go2reachability")
         self.reset_accepted = torch.zeros(
             self.num_envs, dtype=torch.bool, device=self.device
         )

@@ -40,6 +40,8 @@ class Go2Kickup(Go2Balance):
         self._kick_started = torch.zeros_like(self._kick_success)
 
     def reset_to_handstand(self, reset_mask):
+        if self._tilt_test is not None:
+            raise ValueError("the tilt test runs on go2balance, not go2kickup")
         self.reset_to_basic(reset_mask)
         self._reset_stage[reset_mask] = 2
         self._reset_level[reset_mask] = 0
