@@ -11,6 +11,7 @@ from gym.envs.go2.tilt_test import (
     tilt_about_front_feet,
     validate_tilt_test,
 )
+from gym.utils.torch_quat import normalize, quat_apply
 
 
 class BalanceDiagnostics:
@@ -223,6 +224,34 @@ class Go2Balance(Go2Handstand):
 
     def _reward_balance_body_contact(self):
         return -self._body_contact().float()
+
+    @property
+    def com_cop_offset(self):
+        """Horizontal centre-of-mass offset from the front-foot support, metres.
+
+        Column 0 is across the line through the front feet, positive toward
+        over-rotation (the tilt test's sign). Column 1 is along that line,
+        positive toward the left foot, measured from the load-weighted point
+        between the feet (their midpoint while both are unloaded). Rear feet
+        are excluded: standing on all four would otherwise read as balanced.
+        """
+        mass = self._backend.link_mass
+        offset = self._backend.link_com_offset.expand(self.num_envs, -1, -1)
+        points = self._rigid_body_pos + quat_apply(self._rigid_body_quat, offset)
+        com = (mass[..., None] * points).sum(dim=1) / mass.sum(dim=1, keepdim=True)
+        feet = self._rigid_body_pos[:, self.feet_indices[:2]]
+        load = self.contact_forces[:, self.feet_indices[:2], 2].clamp(min=0)
+        total = load.sum(dim=1, keepdim=True)
+        loaded = total > self.cfg.balance_failure.min_normal_force
+        share = torch.where(loaded, load / total.clamp(min=1e-6), 0.5)
+        arm = (com - (share[..., None] * feet).sum(dim=1))[:, :2]
+        left = normalize((feet[:, 0] - feet[:, 1])[:, :2])
+        over = torch.stack((left[:, 1], -left[:, 0]), dim=1)
+        return torch.stack(((arm * over).sum(dim=1), (arm * left).sum(dim=1)), dim=1)
+
+    def _reward_balance_com_offset(self):
+        scale = self.cfg.reward_settings.com_offset_scale
+        return -(self.com_cop_offset.norm(dim=1) / scale).clamp(max=1)
 
     def _reward_termination(self):
         # The runner multiplies all rewards by dt. Falls are discrete events,

@@ -43,6 +43,7 @@ config_dict = {
     "Go2ReachabilityCfg": ".go2.go2reachability_config",
     "Go2KickupCfg": ".go2.go2kickup_config",
     "Go2BalanceCfg": ".go2.go2balance_config",
+    "Go2BalanceComCfg": ".go2.go2balance_com_config",
     "Go2TrotCfg": ".go2.go2trot_config",
 }
 
@@ -63,6 +64,7 @@ runner_config_dict = {
     "Go2ReachabilityRunnerCfg": ".go2.go2reachability_config",
     "Go2KickupRunnerCfg": ".go2.go2kickup_config",
     "Go2BalanceRunnerCfg": ".go2.go2balance_config",
+    "Go2BalanceComRunnerCfg": ".go2.go2balance_com_config",
     "Go2TrotRunnerCfg": ".go2.go2trot_config",
 }
 
@@ -103,6 +105,11 @@ task_dict = {
     "go2reachability": ["Go2Reachability", "Go2ReachabilityCfg", "Go2ReachabilityRunnerCfg"],
     "go2kickup": ["Go2Kickup", "Go2KickupCfg", "Go2KickupRunnerCfg"],
     "go2balance": ["Go2Balance", "Go2BalanceCfg", "Go2BalanceRunnerCfg"],
+    "go2balance_com": [
+        "Go2Balance",
+        "Go2BalanceComCfg",
+        "Go2BalanceComRunnerCfg",
+    ],
     "go2trot": ["Go2Trot", "Go2TrotCfg", "Go2TrotRunnerCfg"],
 }
 
