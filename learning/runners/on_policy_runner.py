@@ -150,7 +150,7 @@ class OnPolicyRunner(BaseRunner):
                 self.save()
         self.save()
 
-    @torch.no_grad
+    @torch.inference_mode()
     def burn_in_normalization(self, n_iterations=100):
         actor_obs = self.get_obs(self.actor_cfg["obs"])
         critic_obs = self.get_obs(self.critic_cfg["obs"])
@@ -265,6 +265,11 @@ class OnPolicyRunner(BaseRunner):
             self.alg.critic_optimizer.load_state_dict(
                 loaded_dict["critic_optimizer_state_dict"]
             )
+            # The adaptive schedule keeps its own copy of the rate and writes
+            # it over the optimizer's on every step; without this a resumed
+            # run takes its first steps at the config's initial rate.
+            if hasattr(self.alg, "learning_rate"):
+                self.alg.learning_rate = self.alg.optimizer.param_groups[0]["lr"]
         self.it = loaded_dict["iter"]
         if hasattr(self.env, "load_training_state_dict"):
             self.env.load_training_state_dict(
