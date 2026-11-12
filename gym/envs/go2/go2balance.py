@@ -84,6 +84,14 @@ class Go2Balance(Go2Handstand):
         self._last_push = torch.zeros(self.num_envs, device=self.device)
         self._body_contact_time = torch.zeros(self.num_envs, device=self.device)
         self._collapse_time = torch.zeros(self.num_envs, device=self.device)
+        self._tilt_time = torch.zeros(self.num_envs, device=self.device)
+        # Configs saved before the tilt rule existed simply leave it off.
+        max_tilt = getattr(self.cfg.balance_failure, "max_tilt_degrees", None)
+        if max_tilt is not None and not 0 < max_tilt < 180:
+            raise ValueError("balance_failure.max_tilt_degrees must be in (0, 180)")
+        self._min_upright = (
+            None if max_tilt is None else math.cos(math.radians(max_tilt))
+        )
         self.training_diagnostics = BalanceDiagnostics(self.device)
         knee = self.cfg.reward_settings.kick_knee_target
         front = [0.0, -math.pi / 2 - knee / 2, knee]
@@ -125,6 +133,7 @@ class Go2Balance(Go2Handstand):
         super()._reset_idx(reset_mask)
         self._body_contact_time[reset_mask] = 0
         self._collapse_time[reset_mask] = 0
+        self._tilt_time[reset_mask] = 0
         p = self.cfg.balance_perturbations
         limits = self._push_table[self._reset_level.clamp(min=0)]
         disturbed = (
@@ -192,6 +201,12 @@ class Go2Balance(Go2Handstand):
         self._collapse_time[:] = torch.where(
             active & collapsed, self._collapse_time + self.dt, 0.0
         )
+        if self._min_upright is not None:
+            # Nose-down vertical puts gravity along body +x, so this is cos(tilt).
+            tilted = self.projected_gravity[:, 0] < self._min_upright
+            self._tilt_time[:] = torch.where(
+                active & tilted, self._tilt_time + self.dt, 0.0
+            )
 
     def _body_contact(self):
         forces = self.contact_forces[:, self.termination_contact_indices]
@@ -204,6 +219,8 @@ class Go2Balance(Go2Handstand):
         self.timed_out = self.episode_length_buf >= self.max_episode_length
         self.terminated |= (self._body_contact_time + 1e-7 >= c.body_contact_seconds)
         self.terminated |= (self._collapse_time + 1e-7 >= c.collapse_seconds)
+        if self._min_upright is not None:
+            self.terminated |= self._tilt_time + 1e-7 >= c.tilt_seconds
 
     def _valid_handstand(self):
         speed = self._rigid_body_lin_vel[:, self.feet_indices[:2], :2].norm(dim=-1)

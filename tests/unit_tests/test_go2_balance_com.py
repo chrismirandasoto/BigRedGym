@@ -12,7 +12,7 @@ from gym.envs.go2.go2balance_com_config import (
     Go2BalanceComCfg,
     Go2BalanceComRunnerCfg,
 )
-from gym.envs.go2.go2balance_config import Go2BalanceRunnerCfg
+from gym.envs.go2.go2balance_config import Go2BalanceCfg, Go2BalanceRunnerCfg
 from gym.utils.task_registry import task_registry
 from gym.utils.torch_quat import quat_apply
 
@@ -122,6 +122,69 @@ def test_task_adds_the_offset_without_changing_go2balance():
     assert "com_cop_offset" not in base.actor.obs
     assert not hasattr(base.critic.reward.weights, "balance_com_offset")
     assert task_registry.get_task_class("go2balance_com") is Go2Balance
+
+
+def lie_down_for(env, steps):
+    # Level trunk, clear of the ground and above the collapse height: the
+    # contact and collapse rules both stay silent.
+    env.contact_forces.zero_()
+    env.root_states[:, 2] = 0.15
+    env.root_states[:, 3:7] = env.root_states.new_tensor([0.0, 0.0, 0.0, 1.0])
+    for _ in range(steps):
+        env._post_decimation_step()
+    env._check_terminations_and_timeouts()
+
+
+def test_sustained_tilt_is_a_fall_even_without_contact_or_collapse(env):
+    c = env.cfg.balance_failure
+    assert c.max_tilt_degrees == 60.0
+    upright = env.root_states[:, 3:7].clone()
+    steps = round(c.tilt_seconds / env.dt)
+    env.episode_length_buf[:] = 100
+    lie_down_for(env, steps - 1)
+    assert not env.terminated.any()
+    # One upright frame clears the continuous timer.
+    env.root_states[:, 3:7] = upright
+    env._post_decimation_step()
+    assert torch.all(env._tilt_time == 0)
+    lie_down_for(env, steps)
+    assert env.terminated.all()
+    assert torch.all(env._body_contact_time == 0)
+    assert torch.all(env._collapse_time == 0)
+    env._reset_idx(torch.ones(5, dtype=torch.bool))
+    assert torch.all(env._tilt_time == 0)
+
+
+def test_tilt_inside_the_limit_and_the_start_grace_are_not_falls(env):
+    # The fixture's widest starts are 20° over; the limit is 60°.
+    env.episode_length_buf[:] = 100
+    for _ in range(100):
+        env._post_decimation_step()
+    env._check_terminations_and_timeouts()
+    assert torch.all(env._tilt_time == 0) and not env.terminated.any()
+    env.episode_length_buf[:] = 0
+    lie_down_for(env, 1)
+    assert torch.all(env._tilt_time == 0)
+
+
+def test_tilt_rule_is_off_unless_configured():
+    assert Go2BalanceCfg.balance_failure.max_tilt_degrees is None
+    cfg = Go2BalanceCfg()
+    cfg.env.num_envs = 2
+    cfg.seed = 17
+    task_registry.convert_frequencies_to_params(cfg, Go2BalanceRunnerCfg())
+    backend = MuJocoCPUBackend()
+    try:
+        env = Go2Balance(cfg, "cpu", True, backend)
+        env._reset_idx(torch.ones(2, dtype=torch.bool))
+        env.episode_length_buf[:] = 100
+        lie_down_for(env, 200)
+        assert not env.terminated.any()
+        cfg.balance_failure.max_tilt_degrees = 180.0
+        with pytest.raises(ValueError, match="max_tilt_degrees"):
+            env._init_buffers()
+    finally:
+        backend.close()
 
 
 def test_scaled_observation_is_two_wide(env):

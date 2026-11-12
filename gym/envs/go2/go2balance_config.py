@@ -47,6 +47,12 @@ class Go2BalanceCfg(Go2HandstandCfg):
         body_contact_seconds = 0.15
         collapse_seconds = 0.25
         body_contact_force = 1.0
+        # Trunk angle from the nose-down vertical that counts as a fall once
+        # it lasts tilt_seconds. None disables the rule. Without it a policy
+        # can lie propped on its side: no trunk contact, base above the
+        # collapse height, and so no fall for the whole episode.
+        max_tilt_degrees = None
+        tilt_seconds = 0.25
 
     class reward_settings(Go2HandstandCfg.reward_settings):
         valid_front_speed = 0.08  # m/s, maximum speed for a valid hold
