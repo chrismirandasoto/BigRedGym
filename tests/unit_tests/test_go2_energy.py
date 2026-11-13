@@ -24,6 +24,7 @@ def make_env(pitch_degrees):
     c.pitch_degrees = [pitch_degrees]
     c.tilt_noise_degrees = [0.0]
     c.angular_velocity_noise = [0.0]
+    c.standing_fraction = 0.0
     cfg.domain_randomization.startup.link_mass_scale_range = [1.0, 1.0]
     task_registry.convert_frequencies_to_params(cfg, Go2EnergyRunnerCfg())
     backend = MuJocoCPUBackend()
@@ -175,6 +176,71 @@ def test_hold_time_counts_only_commanded_upright_steps(top):
     top._handstand_command[0] = 0
     top._update_handstand_hold()
     assert top._hold_time.tolist() == pytest.approx([0.0] + [top.dt] * (N - 1))
+
+
+# ── Falls, residual limit, standing resets ───────────────────────────────
+
+
+@torch.inference_mode()
+def test_lying_on_the_ground_ends_the_episode(standing):
+    """Above min_base_height with the torso clear, but still a fall."""
+    standing._reset_idx(ALL)
+    standing._check_terminations_and_timeouts()
+    assert not standing.terminated.any()
+    # Rolled 90 degrees onto its side, base 0.14 m up, as the failed run did.
+    standing.root_states[:, 2] = 0.14
+    standing.root_states[:, 3:7] = torch.tensor([0.7071, 0.7071, 0.0, 0.0])
+    standing._backend.reset_state(ALL)
+    energy, _ = standing._pendulum()
+    assert energy.max() < standing.cfg.fall.energy
+    steps = math.ceil(standing.cfg.fall.seconds / standing.dt)
+    for _ in range(steps - 1):
+        standing.terminated[:] = False
+        standing._check_terminations_and_timeouts()
+        assert not standing.terminated.any()
+    standing._check_terminations_and_timeouts()
+    assert standing.terminated.all()
+
+
+@torch.inference_mode()
+def test_standing_and_handstand_are_not_falls(top):
+    top._reset_idx(ALL)
+    for _ in range(math.ceil(top.cfg.fall.seconds / top.dt) + 2):
+        top._check_terminations_and_timeouts()
+    assert top._fall_time.max() == 0
+
+
+@torch.inference_mode()
+def test_residual_is_clamped_and_its_excess_penalised(standing):
+    standing._reset_idx(ALL)
+    limit = standing.cfg.residual.limit
+    standing.dof_pos_target[:] = 30.0
+    standing.step()
+    assert standing.dof_pos_target.abs().max() <= limit
+    assert standing._reward_residual_excess().max() < -100
+    standing.dof_pos_target[:] = 0.5 * limit
+    standing.step()
+    assert standing._reward_residual_excess().max() == 0
+
+
+@torch.inference_mode()
+def test_first_curriculum_level_also_trains_standing_starts(top):
+    """Level 0 is all handstand poses unless standing resets are mixed in."""
+    many = 2000
+    top.cfg.handstand_curriculum.standing_fraction = 0.5
+    top.cfg.handstand_trigger.never_fraction = 0.0
+    torch.manual_seed(1)
+    counts = 0
+    for _ in range(many // N):
+        top._reset_idx(ALL)
+        standing = top._reset_stage == 0
+        counts += int(standing.sum())
+        # Standing starts wait for the command and never promote the level.
+        assert not top._handstand_command[standing].any()
+        assert not top._primary_reset[standing].any()
+        assert top._primary_reset[~standing].all()
+    assert 0.4 < counts / many < 0.6
+    assert top.cfg.handstand_curriculum.enabled
 
 
 # ── Handstand command ────────────────────────────────────────────────────

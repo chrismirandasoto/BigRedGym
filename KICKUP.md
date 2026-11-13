@@ -90,9 +90,21 @@ standing posture at level pitch and the handstand posture at vertical, linearly
 in between. Actions are residuals of 0.5 rad per unit around it. The reference
 uses pitch from projected gravity, so deployment needs the same computation.
 
-Training uses the handstand reset curriculum unchanged (top first, then lower
-start pitches down to standing); a hold is 4 s with `pendulum_upright ≥ 0.5`.
+Training uses the handstand reset curriculum (top first, then lower start
+pitches down to standing); a hold is 4 s with `pendulum_upright ≥ 0.5`. Unlike
+the shared curriculum, `standing_fraction` (10%) of resets are standing from
+level 0, so the standing-before-command behaviour is trained from the start.
 Set `handstand_curriculum.enabled = False` to train from standing only.
+
+Three guards came out of the first 1500-iteration run, which never left level
+0, launched the robot when standing, and drove joint targets 30–40 rad out:
+
+- A fall ends the episode once `e < 0.25` for 0.25 s. Lying on its side the
+  base stayed above `min_base_height` with the torso clear, so falls never
+  terminated and the termination penalty never applied.
+- Residuals are clamped to ±1 rad, with `residual_excess` penalising how far
+  past the clamp the policy asks to go.
+- Standing resets at level 0, above.
 
 ```sh
 uv run scripts/train.py --task go2energy --headless

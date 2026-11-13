@@ -30,6 +30,17 @@ class Go2EnergyCfg(Go2HandstandCfg):
         # Standing episodes that never get the command, to keep standing learned.
         never_fraction = 0.1
 
+    class fall:
+        # A fall ends the episode once the energy ratio stays below this. At
+        # rest: standing 0.585, lying on the ground 0.07-0.16.
+        energy = 0.25
+        seconds = 0.25
+
+    class residual:
+        # Largest joint offset from the PD reference, rad. Without a bound the
+        # policy drove targets 30-40 rad past the joints, saturating torque.
+        limit = 1.0
+
     class scaling(Go2HandstandCfg.scaling):
         # Radians per policy unit, around a reference that already follows the
         # swing: enough for a crouch and kick, fine enough to balance.
@@ -57,6 +68,7 @@ class Go2EnergyRunnerCfg(Go2RunnerCfg):
                 dof_pos_limits = 1.0
                 feet_contact_forces = 0.2
                 collision = 1.0
+                residual_excess = 1.0  # keeps the policy mean inside the limit
 
             class termination_weight:
                 termination = 2.0  # event cost; reward cancels runner dt scaling

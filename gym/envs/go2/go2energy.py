@@ -58,6 +58,12 @@ class Go2Energy(Go2Handstand):
             raise ValueError("episode too short to hold after the latest trigger")
         if not 0 <= t.never_fraction < 1:
             raise ValueError("handstand_trigger.never_fraction must be in [0, 1)")
+        if self.cfg.fall.seconds <= 0 or self.cfg.residual.limit <= 0:
+            raise ValueError("fall.seconds and residual.limit must be positive")
+        self._fall_time = torch.zeros(self.num_envs, device=self.device)
+        self._residual_excess = torch.zeros(
+            self.num_envs, len(self.actuated_dof_indices), device=self.device
+        )
         try:
             offset = self._backend.link_com_offset
         except NotImplementedError as error:
@@ -92,6 +98,46 @@ class Go2Energy(Go2Handstand):
         pitch = torch.atan2(gravity[:, 0], -gravity[:, 2])
         progress = self._handstand_command * (pitch / (math.pi / 2)).clamp(0, 1)
         return standing + progress[:, None] * (self._handstand_posture - standing)
+
+    def _pre_decimation_step(self):
+        super()._pre_decimation_step()
+        limit = self.cfg.residual.limit
+        self._residual_excess[:] = (self.dof_pos_target.abs() - limit).clamp(min=0)
+        self.dof_pos_target.clamp_(-limit, limit)
+
+    # ── Resets and falls ─────────────────────────────────────────────────
+
+    def reset_to_handstand(self, reset_mask):
+        super().reset_to_handstand(reset_mask)
+        c = self.cfg.handstand_curriculum
+        # The shared curriculum mixes in standing resets only from level 1,
+        # but this task must learn to stand and kick from the first level.
+        if not c.enabled or self.curriculum_level > 0:
+            return
+        draw = torch.rand(self.num_envs, device=self.device)
+        standing = reset_mask & (draw < c.standing_fraction)
+        if standing.any():
+            # A disabled curriculum gives full standing resets that cannot
+            # promote a level.
+            c.enabled = False
+            try:
+                super().reset_to_handstand(standing)
+            finally:
+                c.enabled = True
+
+    def _reset_idx(self, reset_mask):
+        super()._reset_idx(reset_mask)
+        self._fall_time[reset_mask] = 0
+        self._residual_excess[reset_mask] = 0
+
+    def _check_terminations_and_timeouts(self):
+        super()._check_terminations_and_timeouts()
+        # Lying on its side the base stays above min_base_height and the torso
+        # can stay off the ground, so judge falls by the pendulum instead.
+        energy, _ = self._pendulum()
+        low = energy < self.cfg.fall.energy
+        self._fall_time[:] = torch.where(low, self._fall_time + self.dt, 0.0)
+        self.terminated |= self._fall_time + 1e-7 >= self.cfg.fall.seconds
 
     # ── Handstand command ────────────────────────────────────────────────
 
@@ -200,6 +246,11 @@ class Go2Energy(Go2Handstand):
         return (
             (1 - self._handstand_command) * level * self._reward_tracking_base_height()
         )
+
+    def _reward_residual_excess(self):
+        # The clamp hides how far past the limit the policy asked to go;
+        # penalise that so its mean does not drift into the saturated region.
+        return -self._residual_excess.square().sum(dim=1)
 
     def _reward_termination(self):
         # The runner multiplies all rewards by dt. A fall is one event, so keep
