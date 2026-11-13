@@ -60,3 +60,46 @@ At implementation time `features/kickup` and local `cpg_front` shared commit
 `efe13b2`. Changes are new modules/tests/docs plus additive task registrations;
 existing contact CPG and balance/reachability files are unchanged. This avoids
 conflicts with that branch tip; future changes can still require resolution.
+
+## Energy-shaped kickup and balance (`go2energy`)
+
+`go2energy` drops the CPG. One policy learns the kick and the hold from the
+energy of a reduced-order model: the whole robot as a point mass at its centre
+of mass, swinging about the midpoint of the front feet.
+
+With `h` the height of the mass above the pivot, `v` its speed, and `l` the
+pivot-to-mass distance in the handstand (0.563 m), the rewards use
+
+    e = (h + v² / 2g) / l        # total energy as a fraction of m·g·l
+
+- `pendulum_energy = exp(-((e - 1) / 0.2)²)`. Standing still is `e = 0.585`;
+  the handstand at rest is `e = 1`.
+- `pendulum_upright` multiplies that by `exp(-(θ / 0.3)²)`, where `θ` is the
+  angle of the mass from directly above the pivot. Every state on the way up
+  also has `e = 1`, so only this term separates swinging from balancing.
+- Both count only while the front feet carry load (otherwise hopping reaches
+  the same energy) and only once the handstand command is on. Before that,
+  `stand_ready` rewards a level body at the commanded height.
+
+The command is one extra observation, `handstand_command`. In training it turns
+on 0.5–2 s after a standing reset; 10% of standing episodes never get it. In
+playback press **H** in the viewer to kick up and **R** to return to standing.
+
+The PD reference follows the swing: once commanded, a zero action targets the
+standing posture at level pitch and the handstand posture at vertical, linearly
+in between. Actions are residuals of 0.5 rad per unit around it. The reference
+uses pitch from projected gravity, so deployment needs the same computation.
+
+Training uses the handstand reset curriculum unchanged (top first, then lower
+start pitches down to standing); a hold is 4 s with `pendulum_upright ≥ 0.5`.
+Set `handstand_curriculum.enabled = False` to train from standing only.
+
+```sh
+uv run scripts/train.py --task go2energy --headless
+uv run scripts/play.py --task go2energy --num_envs 1      # then press H
+```
+
+All values in `gym/envs/go2/go2energy_config.py` are untuned first guesses.
+Re-measure `pendulum.length` if `kick_knee_target` changes; the unit test fails
+when they disagree. The task needs per-link centres of mass, which only the
+MuJoCo backends expose so far.

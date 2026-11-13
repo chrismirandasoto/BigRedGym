@@ -22,6 +22,7 @@ class_dict = {
     "Go2Handstand": ".go2.go2handstand",
     "Go2Reachability": ".go2.go2reachability",
     "Go2Kickup": ".go2.go2kickup",
+    "Go2Energy": ".go2.go2energy",
     "Go2Balance": ".go2.go2balance",
     "Go2Trot": ".go2.go2trot",
 }
@@ -42,6 +43,7 @@ config_dict = {
     "Go2HandstandCfg": ".go2.go2handstand_config",
     "Go2ReachabilityCfg": ".go2.go2reachability_config",
     "Go2KickupCfg": ".go2.go2kickup_config",
+    "Go2EnergyCfg": ".go2.go2energy_config",
     "Go2BalanceCfg": ".go2.go2balance_config",
     "Go2TrotCfg": ".go2.go2trot_config",
 }
@@ -62,6 +64,7 @@ runner_config_dict = {
     "Go2HandstandRunnerCfg": ".go2.go2handstand_config",
     "Go2ReachabilityRunnerCfg": ".go2.go2reachability_config",
     "Go2KickupRunnerCfg": ".go2.go2kickup_config",
+    "Go2EnergyRunnerCfg": ".go2.go2energy_config",
     "Go2BalanceRunnerCfg": ".go2.go2balance_config",
     "Go2TrotRunnerCfg": ".go2.go2trot_config",
 }
@@ -102,6 +105,7 @@ task_dict = {
     "go2handstand": ["Go2Handstand", "Go2HandstandCfg", "Go2HandstandRunnerCfg"],
     "go2reachability": ["Go2Reachability", "Go2ReachabilityCfg", "Go2ReachabilityRunnerCfg"],
     "go2kickup": ["Go2Kickup", "Go2KickupCfg", "Go2KickupRunnerCfg"],
+    "go2energy": ["Go2Energy", "Go2EnergyCfg", "Go2EnergyRunnerCfg"],
     "go2balance": ["Go2Balance", "Go2BalanceCfg", "Go2BalanceRunnerCfg"],
     "go2trot": ["Go2Trot", "Go2TrotCfg", "Go2TrotRunnerCfg"],
 }

@@ -99,6 +99,13 @@ it also checks continuous hold timing, promotion eligibility, replay mixtures,
 and curriculum checkpoint restoration after inference-mode stepping. These tests
 establish reset and progression mechanics, not learned handstand performance.
 
+`test_go2_energy.py` checks the front-foot pendulum used by `go2energy`: the
+configured length against the handstand reset pose, the energy against
+MuJoCo's own centre-of-mass height and speed, the two rewards against a
+supported handstand, a fast-moving standing robot, and unloaded front feet,
+and the handstand command from training delay through the H key and reset.
+These establish the reward and trigger mechanics, not learned performance.
+
 The colocated `gym/envs/go2/test_go2trot.py` also checks consecutive-action
 smoothness and symmetric yaw-error rewards against hand-calculated values.
 

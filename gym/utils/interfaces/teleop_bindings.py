@@ -25,6 +25,10 @@ natural U/O pair collides with vsim's step toggle:
                      R       reset envs
                      Esc     quit (or close the window)
                      Up/Down raise / lower desired base height
+                     H       kick up into a handstand (go2energy)
+
+H is free in vsim. In MuJoCo it also toggles convex-hull rendering when the
+side panels are shown, like every other letter here.
 
 GLFW (MuJoCo) uses ASCII codes for letter keys, so `ord(letter)` is the
 keycode. Each viewer adapter translates named special keys such as UP/DOWN
@@ -45,6 +49,7 @@ BINDINGS = {
     "down": "DOWN",
     "reset": "R",
     "stop": "X",
+    "handstand": "H",
 }
 
 # key name → action name (translated by each viewer adapter)
@@ -57,6 +62,7 @@ HELP_LINES = (
     "  Up/Down       raise / lower base height by 0.01 m",
     "  R             restart all robots in the configured start pose (keep commands)",
     "  X             stop translation and yaw (keep height)",
+    "  H             kick up into a handstand and hold it until R (go2energy only)",
     "  Esc / window  quit",
     "  velocity steps: 0.1 m/s; yaw steps: 0.1 rad/s",
 )
@@ -107,6 +113,9 @@ class TeleopCommands:
             )
         if hasattr(env.cfg, "commands"):
             env.cfg.commands.resampling_time = env.max_episode_length_s + 1
+        # Training starts the handstand after a random delay; here the key does.
+        if hasattr(env, "await_handstand_trigger"):
+            env.await_handstand_trigger()
 
     @torch.inference_mode()
     def apply(self, action: str) -> None:
@@ -158,6 +167,12 @@ class TeleopCommands:
 
         elif action == "stop":
             c[:, :3] = 0.0
+        elif action == "handstand":
+            if hasattr(self.env, "trigger_handstand"):
+                self.env.trigger_handstand()
+                print("Handstand commanded; press R to reset to standing.")
+            else:
+                print("This task has no handstand command.")
         elif action == "reset":
             requested_commands = c.clone()
             self.env.timed_out[:] = True
