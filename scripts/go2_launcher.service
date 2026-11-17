@@ -1,0 +1,23 @@
+# Installed on the Jetson by `scripts/deploy_go2_remote.py --install`, which
+# fills in @USER@, @HOME@ and @REPO@ (the synced repo). Hold L1 + R1 on the
+# remote to start go2_deploy with logs/policies/current, L2 + R2 to stop it
+# (e-stop, then stand back up; go2_deploy/launcher.py).
+[Unit]
+Description=BigRedGym Go2 launcher (hold L1 + R1 to start go2_deploy, L2 + R2 to stop it)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=@USER@
+WorkingDirectory=@REPO@
+Environment=CYCLONEDDS_HOME=@HOME@/.local/opt/cyclonedds-0.10.2
+Environment=PYTHONUNBUFFERED=1
+ExecStart=@REPO@/.venv/bin/python -m go2_deploy.launcher eth0
+Restart=always
+RestartSec=5
+# Only kill the launcher itself on stop/restart. The tmux session it started
+# holds the running controller (and the RC e-stop); never take it down with us.
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target

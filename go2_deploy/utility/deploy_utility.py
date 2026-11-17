@@ -1,6 +1,7 @@
 import torch
-from go2_deploy.deploy_config import DeployConfig
 from gym.utils.torch_quat import quat_rotate_inverse
+from go2_deploy.deploy_config import DeployConfig
+from go2_deploy.utility.import_custom_impl import custom_impl
 
 # Unitree motor order: Front Right hip (haa), FR thigh (hfe), FR calf (kfe),
 # Front Left ... Rear Right ... Rear Left
@@ -8,8 +9,8 @@ from gym.utils.torch_quat import quat_rotate_inverse
 UNITREE_TO_QGYM_JOINT_IDX = torch.tensor([3, 4, 5, 0, 1, 2, 9, 10, 11, 6, 7, 8])
 QGYM_TO_UNITREE_JOINT_IDX = torch.tensor([3, 4, 5, 0, 1, 2, 9, 10, 11, 6, 7, 8])
 
-# Compute pieces of the observation vector, returning torch tensors
 
+# Compute pieces of the observation vector, returning torch tensors
 
 def _get_obs_base_ang_vel(main_controller, lowstate_msg):
     return torch.tensor(lowstate_msg.imu_state.gyroscope)
@@ -77,9 +78,10 @@ def lowstate_to_obs(main_controller, lowstate_msg):
         "dof_vel": _get_obs_dof_vel,
         "dof_accel": _get_obs_dof_accel,
         "dof_pos_target": _get_obs_dof_pos_target,
-        "phase_obs": _get_obs_phase_obs,
-        "phase_frequency": _get_obs_phase_frequency,
     }
+
+    custom_obs_pieces = custom_impl.get_custom_obs_pieces()
+    get_obs_piece.update(custom_obs_pieces)
 
     obs_vector = torch.zeros(main_controller.obs_vec_size)
     i = 0
@@ -120,8 +122,8 @@ def action_to_lowcmd(main_controller, action_qgym_convention, kp_mult=1.0, kd_mu
     return lowcmd
 
 
-# Returns LowCmd_ of q, dq, kp, kd = 0
-def default_lowcmd():
+# Returns LowCmd_ of q, dq = 0 and the configured kp, kd
+def default_lowcmd(cfg):
     from unitree_sdk2py.idl.default import unitree_go_msg_dds__LowCmd_
     from unitree_sdk2py.utils.crc import CRC
 
@@ -131,8 +133,6 @@ def default_lowcmd():
     lowcmd.head[1] = 0xEF
     lowcmd.level_flag = 0xFF
     lowcmd.gpio = 0
-    cfg = DeployConfig()
-
     for i in range(20):
         lowcmd.motor_cmd[i].mode = 0x01
         lowcmd.motor_cmd[i].q = 0
@@ -152,10 +152,10 @@ def default_lowcmd():
 
 
 # Returns LowCmd_ of q, dq, kp = 0, kd > 0
-def emergency_lowcmd():
+def emergency_lowcmd(cfg):
     from unitree_sdk2py.utils.crc import CRC
 
-    lowcmd = default_lowcmd()
+    lowcmd = default_lowcmd(cfg)
     crc = CRC()
 
     for i in range(12):

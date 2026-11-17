@@ -7,9 +7,11 @@ import random
 import torch
 
 
-# Returns Actor constructed from logs/go2/run_name (default: most recent)
-def setup_actor(run_name=None):
-    deploy_cfg = DeployConfig()
+# Returns Actor constructed from logs/go2/run_name (default: most recent).
+# Builds the training env, so only use this on the PC; the robot loads bundles.
+def setup_actor(run_name=None, deploy_cfg=None):
+    if deploy_cfg is None:
+        deploy_cfg = DeployConfig()
     env_cfg, train_cfg = task_registry.get_cfgs(name=deploy_cfg.task_name)
 
     env_cfg.env.num_envs = 1
@@ -45,11 +47,20 @@ def setup_actor(run_name=None):
 
 
 class RLController:
-    def __init__(self):
-        self.actor = setup_actor()
-        self.cfg = DeployConfig()
+    """Runs one policy. `policy` maps a scaled obs vector to raw actions.
+
+    Pass the policy from policy_bundle.load_bundle(); without one, the actor is
+    built from the training logs (PC-tethered workflow).
+    """
+
+    def __init__(self, cfg, policy=None):
+        self.cfg = cfg
+        self.policy = policy if policy is not None else setup_actor(None, cfg)
+        self.action_scale = torch.tensor(
+            getattr(cfg.DeployScaling, "dof_pos_target", 1.0)
+        )
 
     # Returns torch.tensor(12): offsets from the static default posture in radians.
     def act(self, obs_vector):
-        scale = torch.tensor(getattr(self.cfg.DeployScaling, "dof_pos_target", 1.0))
-        return self.actor.act_inference(obs_vector) * scale
+        with torch.no_grad():
+            return self.policy(obs_vector) * self.action_scale

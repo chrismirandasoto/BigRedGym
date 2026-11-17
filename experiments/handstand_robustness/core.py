@@ -153,16 +153,26 @@ class Environment(Replay):
         desired = np.clip(
             self.trajectory["nominal"] + ACTION_SCALE * action, *self.bounds.T
         )
+        previous_target = self.target.copy()
         self.target += np.clip(
             desired - self.target,
             -0.7 * self.speed * CONTROL_DT,
             0.7 * self.speed * CONTROL_DT,
         )
-        for _ in range(round(CONTROL_DT / PHYSICS_DT)):
+        # Actuator variations for robustness studies; every default reproduces
+        # the nominal motor model exactly.
+        kp = KP * self.condition.get("kp_scale", 1.0)
+        kd = KD * self.condition.get("kd_scale", 1.0)
+        delay = int(self.condition.get("command_delay_substeps", 0))
+        zero_offset = getattr(self, "joint_zero_offset", 0.0)
+        for substep in range(round(CONTROL_DT / PHYSICS_DT)):
             velocity = self.d.qvel[self.vids].copy()
             effort = self.effort * self.condition.get("strength", 1.0)
+            # The new target reaches the motors `delay` physics steps late, and
+            # the motor's own position reading may have a zero offset.
+            target = previous_target if substep < delay else self.target
             torque = np.clip(
-                KP * (self.target - self.d.qpos[self.qids]) - KD * velocity,
+                kp * (target - self.d.qpos[self.qids] - zero_offset) - kd * velocity,
                 -effort,
                 effort,
             )

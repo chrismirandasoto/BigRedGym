@@ -38,6 +38,13 @@ def _numbered(prefix, count):
     return [f"{prefix}_{i}" for i in range(count)]
 
 
+def new_run_dir(log_root="logs/deploy"):
+    """Create and return logs/deploy/<YYYY-mm-dd_HH-MM-SS>."""
+    run_dir = os.path.join(log_root, datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
+    os.makedirs(run_dir, exist_ok=True)
+    return run_dir
+
+
 class _Stream:
     """One open CSV file plus its writer."""
 
@@ -55,14 +62,14 @@ class CSVLogger:
     and hand a row to a queue; a single background thread does all file I/O.
     """
 
-    def __init__(self, main_controller, log_root="logs/deploy"):
+    def __init__(self, main_controller, log_root="logs/deploy", run_dir=None):
         self.main_controller = main_controller
         cfg = main_controller.cfg
 
         start_wall = datetime.now()
         self.start_monotonic = time.monotonic()
-        self.run_dir = os.path.join(log_root, start_wall.strftime("%Y-%m-%d_%H-%M-%S"))
-        os.makedirs(self.run_dir, exist_ok=True)
+        # deploy.py creates the run dir up front so terminal.log covers startup
+        self.run_dir = run_dir if run_dir is not None else new_run_dir(log_root)
 
         # Observation columns follow cfg.obs_vector so the header tracks any
         # config change instead of going stale.
@@ -96,6 +103,9 @@ class CSVLogger:
                     "exp_moving_avg": cfg.exp_moving_avg,
                     "ema_smoothing_factor": cfg.ema_smoothing_factor,
                     "obs_vector": list(cfg.obs_vector),
+                    # Full policy bundle metadata (scaling, hash, provenance),
+                    # or None when the actor was built from training logs.
+                    "policy_bundle": cfg.bundle_meta,
                 },
                 f,
                 indent=2,

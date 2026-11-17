@@ -1,3 +1,4 @@
+from go2_deploy.utility.import_custom_impl import custom_impl
 from go2_deploy.utility.thread import RecurrentThread
 
 
@@ -15,8 +16,8 @@ class KeyboardHandler:
             self.controller.request_emergency_stop()
         # elif key == "r":
         #     self.controller.request_recovery()
-        elif key == "q":
-            self.controller.request_intermediate()
+        #elif key == "q":
+        #    self.controller.request_intermediate()
         elif key == "c":
             self.controller.request_custom_ctrl()
         elif key == "i":
@@ -41,5 +42,10 @@ class KeyboardHandler:
             print(
                 f"kd decreased to {self.controller.kd_mult * self.controller.cfg.kd:.4}"
             )
+        # Optional hook: keys owned by the custom implementation
+        elif hasattr(custom_impl, "on_key") and custom_impl.on_key(
+            self.controller, key
+        ):
+            pass
         else:
             print("Invalid keyboard input!")

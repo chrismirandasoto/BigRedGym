@@ -2,7 +2,6 @@ import time
 import sys
 import struct
 
-from go2_deploy.deploy_config import DeployConfig
 from go2_deploy.state import State
 
 from unitree_sdk2py.core.channel import ChannelSubscriber, ChannelFactoryInitialize
@@ -13,7 +12,7 @@ from unitree_sdk2py.core import channel
 
 
 class UnitreeRemoteController:
-    def __init__(self):
+    def __init__(self, cfg):
         # key
         self.Lx = 0
         self.Rx = 0
@@ -38,7 +37,7 @@ class UnitreeRemoteController:
         self.F3 = [0, 0]
         self.Start = [0, 0]
 
-        self.cfg = DeployConfig()
+        self.cfg = cfg
 
         # derived values
         self.lin_vel_x = 0.0
@@ -99,8 +98,8 @@ class UnitreeRemoteController:
         self.lin_vel_x = (
             self.Ly * self.cfg.command_limits["lin_vel_x"]
         )  # forward-backward
-        self.lin_vel_y = self.Lx * self.cfg.command_limits["lin_vel_y"]  # left-right
-        self.yaw_vel = self.Rx * self.cfg.command_limits["yaw_vel"]
+        self.lin_vel_y = -self.Lx * self.cfg.command_limits["lin_vel_y"]  # left-right
+        self.yaw_vel = -self.Rx * self.cfg.command_limits["yaw_vel"]
 
     def parse(self, remoteData):
         self.parse_key(remoteData)
@@ -150,8 +149,8 @@ class RCHandler:
                 return
             # if self.rc.Y == [1, 0]:
             #     self.controller.request_recovery()
-            elif self.rc.B == [1, 0]:
-                self.controller.request_intermediate()
+            #elif self.rc.B == [1, 0]:
+            #    self.controller.request_intermediate()
             elif self.rc.A == [1, 0]:
                 self.controller.request_custom_ctrl()
 
@@ -194,7 +193,9 @@ class RCHandler:
 class Custom:
     def __init__(self):
         self.low_state = None
-        self.remoteController = UnitreeRemoteController()
+        from go2_deploy.deploy_config import DeployConfig
+
+        self.remoteController = UnitreeRemoteController(DeployConfig())
 
     def Init(self):
         self.lowstate_subscriber = ChannelSubscriber("rt/lf/lowstate", LowState_)

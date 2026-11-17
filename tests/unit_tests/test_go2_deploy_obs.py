@@ -25,7 +25,7 @@ def _controller(cfg=None):
         last_command=torch.tensor([0.5, -0.25, 0.75]),
         last_action=torch.zeros(2, 12),
         phase=0.4,
-        phase_frequency=cfg.phase_frequency,
+        phase_frequency=2.0,
     )
 
 
