@@ -75,6 +75,70 @@ def history_observations(reference, seed=0):
     return torch.cat([current, frames], -1)
 
 
+def hold_policies(args):
+    """(deploy module, independent reference, saved info) for a hold export.
+
+    The reference recomputes the hold branch with the training task's own
+    feature and action functions, so the export check covers the deploy
+    module's re-implementation of them.
+    """
+    import numpy as np
+
+    from experiments.handstand_robustness.randomized_training import load_policy
+    from go2_deploy.handstand.hold_policy import CaptureHoldDeployPolicy, mlp_from_state
+    from gym.envs.go2.handstand_hold_features import (
+        features,
+        frame_center_and_scale,
+        joint_offset,
+    )
+
+    capture, saved = load_policy(args.checkpoint)
+    capture.eval()
+    with np.load(args.handover_states, allow_pickle=False) as data:
+        meta = {key: data[key] for key in data.files if data[key].ndim <= 2}
+    if int(meta["handover_step"]) != int(capture.active_steps):
+        sys.exit("hand-over step of the dataset and the capture checkpoint differ")
+    hold = torch.load(args.hold_checkpoint, map_location="cpu", weights_only=True)
+    network = mlp_from_state(hold["actor_state_dict"])
+    center, scale = frame_center_and_scale(
+        meta["nominal"], meta["hold_target"], meta["speed"], meta["target_rotation"]
+    )
+    policy = CaptureHoldDeployPolicy(
+        capture.state_dict(),
+        network,
+        center,
+        scale,
+        meta["nominal"],
+        meta["hold_target"],
+    ).eval()
+    frames_count = policy.history
+
+    def reference(obs):
+        obs = obs if obs.dim() == 2 else obs[None]
+        frames = torch.cat(
+            [obs[:, None, :42], obs[:, 47:].view(len(obs), frames_count, 42)], 1
+        )
+        action = network(features(frames, center, scale))
+        offset = joint_offset(action, meta["nominal"], meta["hold_target"])
+        hold_units = (offset / 2).clamp(-1, 1)
+        late = (obs[:, 42] * 400).round() >= capture.active_steps
+        return torch.where(late[:, None], hold_units, capture(obs[:, :47]))
+
+    saved = dict(saved)
+    saved["update"] = hold.get("iter")
+    saved["kind"] = "capture_hold_v1"
+    saved["hold_checkpoint"] = str(args.hold_checkpoint)
+    return policy, reference, saved
+
+
+def hold_observations(policy, seed=0):
+    """Capture observations at every phase step, with random past frames."""
+    current = parity_observations(policy.capture, seed)
+    generator = torch.Generator().manual_seed(seed)
+    frames = 0.2 * torch.randn(len(current), 42 * policy.history, generator=generator)
+    return torch.cat([current, frames], -1)
+
+
 def largest_difference(reference, policy, observations):
     with torch.no_grad():
         expected = reference(observations)
@@ -165,6 +229,18 @@ def main():
     )
     parser.add_argument("--out_root", default=os.path.join("logs", "policies"))
     parser.add_argument(
+        "--hold-checkpoint",
+        type=Path,
+        help="go2handstandhold training checkpoint (logs/go2handstandhold/<run>/"
+        "model_N.pt): the released kick, then this policy from the hand-over",
+    )
+    parser.add_argument(
+        "--handover-states",
+        type=Path,
+        default=Path("resources/handstand/handover_states.npz"),
+        help="the dataset the hold policy was trained from",
+    )
+    parser.add_argument(
         "--foot-correction",
         type=float,
         help="seconds; pull the root estimate toward planted feet (default: off, "
@@ -180,7 +256,15 @@ def main():
         "kind"
     )
     cfg = DeployConfig()
-    if kind == HISTORY_KIND:
+    if args.hold_checkpoint is not None:
+        # Released kick, then the go2handstandhold policy from the hand-over.
+        policy, reference, saved = hold_policies(args)
+        frames = policy.history
+        cfg.obs_vector = list(cfg.obs_vector) + ["hs_history"]
+        cfg.obs_sizes = dict(cfg.obs_sizes) | {"hs_history": 42 * frames}
+        observations = hold_observations(policy)
+        kind = "capture_hold_v1"
+    elif kind == HISTORY_KIND:
         # The network takes past observation frames as one more piece.
         reference, saved = load_history_policy(args.checkpoint)
         policy = reference
@@ -203,6 +287,7 @@ def main():
         checkpoint_sha256=sha256(args.checkpoint),
         checkpoint_update=saved.get("update"),
         checkpoint_kind=saved.get("kind"),
+        hold_checkpoint=saved.get("hold_checkpoint"),
         trajectory_sha256=TRAJECTORY_SHA256,
         git_commit=git_commit(),
         validation="simulation only; not validated on hardware",

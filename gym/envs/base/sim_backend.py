@@ -176,6 +176,11 @@ class SimBackend(ABC):
         """[num_envs, num_bodies, 3] applied diagonal link inertias."""
         raise NotImplementedError
 
+    @property
+    def link_com_offset(self) -> torch.Tensor:
+        """[num_bodies, 3] each link's centre of mass in its own body frame."""
+        raise NotImplementedError
+
     def set_link_mass_scale(
         self,
         env_ids: torch.Tensor,

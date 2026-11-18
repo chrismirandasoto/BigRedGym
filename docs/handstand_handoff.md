@@ -1,5 +1,78 @@
 # Handstand deployment and robustness: where it stands
 
+## Newest: robust hold policy (Path 2), ready to train on MoLab
+
+Added 2026-11-18. Keep the released kick (it mostly works) and replace what
+happens after the 2.2 s hand-over with a policy trained under sensor and
+actuator errors. 28 of the 33 failures in the released 67/100 happen after
+the robot reaches the top.
+
+**Train it** with `notebooks/molab_train.py`:
+
+```python
+BRANCH = "cm2233/handstand-deploy"
+REPO_URL = "https://github.com/chrismirandasoto/BigRedGym.git"
+TASK = "go2handstandhold"
+NUM_ENVS = 4096
+MAX_ITERATIONS = 2000
+EXPERIMENT_NAME = "go2handstandhold"
+RESUME = False
+```
+
+Nothing else is needed on MoLab: the hand-over states are in git
+(`resources/handstand/handover_states.npz`), and `artifacts/` is not used.
+
+**What to watch** in the training log:
+
+- `strict_hold`: fraction of time inside the strict handstand gate. It
+  starts near 0.02 (untrained). This is the number that matters.
+- `termination`: falls; should shrink toward 0.
+- Errors (delay, gains, IMU bias and so on) grow from zero to full size over
+  the first `ramp_steps = 1500` control steps (about the first 100
+  iterations), so an early dip in `strict_hold` around then is expected.
+
+**After training**, on a machine with `artifacts/` (the laptop):
+
+```bash
+# Released kick + the trained hold, as one deploy bundle (checks parity).
+.venv/bin/python scripts/export_handstand_bundle.py --name handstand_hold_v1 \
+  --hold-checkpoint logs/go2handstandhold/<run>/model_2000.pt --foot-correction 0.3
+# Through the real deploy stack: released start scatter, then growing errors.
+.venv/bin/python scripts/handstand_randomized.py evaluate --deployed \
+  --bundle logs/policies/handstand_hold_v1 --profiles release deploy \
+  --scales 0 0.1 0.3 1 --trials 100 --evaluation-seed 801000 \
+  --output output/handstand_hold_v1
+```
+
+Baseline to beat (released controller through the same stack, 16 trials):
+16/16 with no errors, 6/16 at 3%, 1/16 at 10%, 0/16 at 30%. On the
+released 100 seeds it is 67/100 from the training start.
+
+**Checked so far** (no training was run):
+
+- The task's physics matches the original simulator: replaying the released
+  controller's commands from the same hand-over state, joint angles agree to
+  1.5e-5 rad after 2 s and applied targets to 1.1e-7.
+- `scripts/train.py --task go2handstandhold` runs (2 CPU iterations).
+- A checkpoint exports into a 215-input deploy bundle that matches the
+  training-side computation to 1.8e-7, and flies through the deploy stack.
+- 269 unit tests pass.
+
+**Not checked:** the GPU (MuJoCo Warp) backend, since this machine has no
+GPU; and whether training actually reaches a robust hold. If `strict_hold`
+stays near zero after a few hundred iterations, the reward weights in
+`gym/envs/go2/go2handstandhold_config.py` are the first thing to revisit.
+
+**Files:** `gym/envs/go2/go2handstandhold.py` and `_config.py` (task),
+`gym/envs/go2/handstand_hold_features.py` (observation and action definition
+shared with deployment), `go2_deploy/handstand/hold_policy.py` (deploy
+module), `scripts/handstand_handover_states.py` (regenerates the dataset;
+about 45 min on 8 cores; commit the result with `git add -f`),
+`tests/unit_tests/test_handstand_hold.py`.
+
+---
+
+
 Written 2026-11-17. Branch `cm2233/handstand-deploy`. Everything below is
 simulation; nothing has run on a robot. Full results and tables are in
 [go2_handstand_deploy.md](go2_handstand_deploy.md).

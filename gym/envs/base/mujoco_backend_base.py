@@ -66,6 +66,7 @@ class MuJocoBackendBase(SimBackend):
         self._link_inertia_t: torch.Tensor = None
         self._nominal_link_mass: torch.Tensor = None
         self._nominal_link_inertia: torch.Tensor = None
+        self._link_com_offset: torch.Tensor = None
 
     # ── SimBackend.device ─────────────────────────────────────────────────────
 
@@ -111,6 +112,10 @@ class MuJocoBackendBase(SimBackend):
     @property
     def link_inertia(self) -> torch.Tensor:
         return self._link_inertia_t
+
+    @property
+    def link_com_offset(self) -> torch.Tensor:
+        return self._link_com_offset
 
     # ── World building ─────────────────────────────────────────────────────────
 
@@ -253,6 +258,10 @@ class MuJocoBackendBase(SimBackend):
         ).unsqueeze(0)
         self._link_mass_t = self._nominal_link_mass.repeat(num_envs, 1)
         self._link_inertia_t = self._nominal_link_inertia.repeat(num_envs, 1, 1)
+        # Mass randomization scales mass and inertia about this fixed point.
+        self._link_com_offset = torch.tensor(
+            mjm.body_ipos[body_indices].copy(), dtype=torch.float, device=device
+        )
 
     @staticmethod
     def _set_model_contact_friction(model: mujoco.MjModel, coefficient: float) -> None:
