@@ -73,6 +73,9 @@ class Go2HandstandHoldCfg(Go2Cfg):
         # this much tilt from the handstand, or the body this low.
         max_tilt = 0.7  # rad
         min_base_height = 0.3  # m
+        # A simulation past these has diverged; it is reset, never learned from.
+        max_joint_speed = 100.0  # rad/s (limits are 15.7-30.1)
+        max_body_speed = 20.0  # m/s or rad/s
 
     class reward_settings(Go2Cfg.reward_settings):
         tilt_sigma = 0.15  # rad
@@ -127,6 +130,9 @@ class Go2HandstandHoldRunnerCfg(Go2RunnerCfg):
     class algorithm(Go2RunnerCfg.algorithm):
         rollout_size = 2**16
         entropy_coef = 0.005
+        # The default adaptive range reaches 1e-2, enough to blow up this
+        # small-action balance task.
+        lr_range = [1e-5, 2e-3]
 
     class runner(Go2RunnerCfg.runner):
         experiment_name = "go2handstandhold"

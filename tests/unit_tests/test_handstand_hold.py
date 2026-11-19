@@ -259,3 +259,30 @@ def test_rewards_are_bounded_and_registered(env):
     for name in ["strict_hold", "upright", "com_over_support", "heights"]:
         value = getattr(env, f"_reward_{name}")()
         assert (value >= 0).all() and (value <= 1).all(), name
+
+
+@torch.inference_mode()
+def test_a_diverged_world_is_reset_without_touching_the_others(env):
+    env._reset_idx(ALL)
+    env.step()
+    healthy = env.hold_obs[1:].clone()
+    env.dof_vel[0, 3] = float("nan")
+    env.root_states[0, 8] = float("inf")
+    env.torques[0, 0] = float("nan")
+    env._guard_diverged()
+    env._update_physics_summaries()
+    env._measure_frame(None)
+    env._check_terminations_and_timeouts()
+    assert env.terminated[0] and not env._diverged[1:].any()
+    assert (
+        torch.isfinite(env.hold_obs).all() and torch.isfinite(env.hold_privileged).all()
+    )
+    torch.testing.assert_close(env.hold_obs[1:], healthy)
+    from gym.envs.go2.go2handstandhold_config import Go2HandstandHoldRunnerCfg
+
+    for name in vars(Go2HandstandHoldRunnerCfg.critic.reward.weights):
+        if not name.startswith("_"):
+            assert torch.isfinite(getattr(env, f"_reward_{name}")()).all(), name
+    assert env.diverged_resets == 1
+    env._reset_idx(env.terminated)
+    assert torch.isfinite(env.dof_vel).all() and torch.isfinite(env.root_states).all()

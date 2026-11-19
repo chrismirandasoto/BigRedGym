@@ -122,6 +122,8 @@ class Go2HandstandHold(Go2):
         self._support_error = zeros(n)
         self._front_slip = zeros(n)
         self._link_com_offset = self._backend.link_com_offset
+        self._diverged = torch.zeros(n, dtype=torch.bool, device=self.device)
+        self.diverged_resets = 0
 
     # ── Resets ───────────────────────────────────────────────────────────
 
@@ -211,8 +213,51 @@ class Go2HandstandHold(Go2):
 
     def _post_decimation_step(self):
         super()._post_decimation_step()
+        self._guard_diverged()
         self._update_physics_summaries()
         self._measure_frame(None)
+
+    def _guard_diverged(self):
+        """End and neutralise any world whose simulation has blown up.
+
+        One non-finite world would otherwise reach the observations, the
+        critic's running normaliser and the network weights of every world.
+        Its state is zeroed only until the reset that follows this step.
+        """
+        h = self.cfg.handstand_hold
+        state = [
+            self.root_states,
+            self.dof_pos,
+            self.dof_vel,
+            self._rigid_body_state.view(self.num_envs, -1),
+            self.contact_forces.view(self.num_envs, -1),
+            self.torques,
+        ]
+        bad = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        for tensor in state:
+            bad |= ~torch.isfinite(tensor).all(dim=1)
+        bad |= self.dof_vel.abs().amax(dim=1) > h.max_joint_speed
+        bad |= self.root_states[:, 7:13].abs().amax(dim=1) > h.max_body_speed
+        self._diverged = bad
+        if not bad.any():
+            return
+        for tensor in state:
+            torch.nan_to_num_(tensor, nan=0.0, posinf=0.0, neginf=0.0)
+        self.root_states[bad, 3:7] = torch.tensor(
+            [0.0, 0.0, 0.0, 1.0], device=self.device
+        )
+        self.base_quat[:] = self.root_states[:, 3:7]
+        for name in ("base_lin_vel", "base_ang_vel", "projected_gravity"):
+            torch.nan_to_num_(getattr(self, name), nan=0.0, posinf=0.0, neginf=0.0)
+        self.diverged_resets += int(bad.sum())
+        if self.diverged_resets == int(bad.sum()) or self.diverged_resets % 100 < int(
+            bad.sum()
+        ):
+            print(
+                f"[go2handstandhold] {self.diverged_resets} diverged simulations "
+                "reset so far",
+                flush=True,
+            )
 
     # ── Sensors ──────────────────────────────────────────────────────────
 
@@ -248,7 +293,8 @@ class Go2HandstandHold(Go2):
     @property
     def hold_obs(self):
         frames = torch.cat([self._frame[:, None], self._history], 1)
-        return features(frames, self._frame_center, self._frame_scale)
+        out = features(frames, self._frame_center, self._frame_scale)
+        return torch.nan_to_num(out, nan=0.0, posinf=0.0, neginf=0.0)
 
     @property
     def hold_privileged(self):
@@ -277,7 +323,7 @@ class Go2HandstandHold(Go2):
                 ),
             ],
             dim=1,
-        )
+        ).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
 
     # ── Physics summaries ────────────────────────────────────────────────
 
@@ -331,6 +377,7 @@ class Go2HandstandHold(Go2):
         h = self.cfg.handstand_hold
         self.terminated |= self._tilt > h.max_tilt
         self.terminated |= self.root_states[:, 2] < h.min_base_height
+        self.terminated |= self._diverged
 
     # ── Rewards (all in [0, 1] unless a penalty) ─────────────────────────
 

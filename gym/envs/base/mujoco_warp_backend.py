@@ -231,6 +231,7 @@ class MuJocoWarpBackend(MuJocoBackendBase):
             # Zero-copy torch views
             self._qpos_t = wp.to_torch(self._d.qpos)
             self._qvel_t = wp.to_torch(self._d.qvel)
+            self._qacc_warmstart_t = wp.to_torch(self._d.qacc_warmstart)
             self._qfrc_t = wp.to_torch(self._d.qfrc_applied)
             self._cfrc_t = wp.to_torch(self._d.cfrc_ext)
             self._xpos_t = wp.to_torch(self._d.xpos)
@@ -340,6 +341,9 @@ class MuJocoWarpBackend(MuJocoBackendBase):
                 out=self._qvel_t[:, 3:6],
             )
 
+        # The solver starts from the previous step's accelerations; a reset
+        # world must not inherit them (a diverged world would stay NaN).
+        self._qacc_warmstart_t.masked_fill_(mask, 0.0)
         with self._wp_ctx:
             mjw.forward(self._m, self._d)
         self._sync_assembled_states()
