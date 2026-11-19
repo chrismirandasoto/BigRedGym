@@ -286,3 +286,100 @@ def test_a_diverged_world_is_reset_without_touching_the_others(env):
     assert env.diverged_resets == 1
     env._reset_idx(env.terminated)
     assert torch.isfinite(env.dof_vel).all() and torch.isfinite(env.root_states).all()
+
+
+# ── v2: gate on every physics step, unbroken hold ────────────────────────
+
+
+@pytest.fixture
+def env_v2():
+    from gym.envs.base.mujoco_cpu_backend import MuJocoCPUBackend
+    from gym.envs.go2.go2handstandhold_v2 import Go2HandstandHoldV2
+    from gym.envs.go2.go2handstandhold_v2_config import (
+        Go2HandstandHoldV2Cfg,
+        Go2HandstandHoldV2RunnerCfg,
+    )
+    from gym.utils.task_registry import task_registry
+
+    meta()  # skips without the dataset
+    cfg = Go2HandstandHoldV2Cfg()
+    cfg.seed = 5
+    cfg.env.num_envs = N
+    cfg.push_robots.toggle = False
+    cfg.domain_randomization.startup.contact_friction_range = None
+    cfg.domain_randomization.startup.link_mass_scale_range = None
+    cfg.domain_randomization.episode.scale_ranges = {}
+    cfg.handstand_hold.ramp_steps = 10**9
+    task_registry.convert_frequencies_to_params(cfg, Go2HandstandHoldV2RunnerCfg())
+    backend = MuJocoCPUBackend()
+    env = Go2HandstandHoldV2(cfg, "cpu", True, backend)
+    env._reset_idx(ALL)
+    try:
+        yield env
+    finally:
+        backend.close()
+
+
+@torch.inference_mode()
+def test_v2_a_step_holds_only_if_every_physics_step_passes(env_v2):
+    env = env_v2
+    passes = [torch.ones(N, dtype=torch.bool)] * 10
+    passes[6] = torch.tensor([True, False, True, True])  # world 1 fails once
+    calls = []
+
+    def gate():
+        calls.append(None)
+        return passes[(len(calls) - 1) % 10]
+
+    env._strict_hold = gate
+    env.step()
+    env.step()
+    assert len(calls) == 20  # once per physics step
+    torch.testing.assert_close(
+        env.hold_seconds, torch.tensor([2, 0, 2, 2]) * env.dt, atol=1e-6, rtol=0
+    )
+    rewards = env._reward_unbroken_hold()
+    assert rewards[1] == 0 and (rewards[[0, 2, 3]] > 0).all()
+    env._reset_idx(torch.tensor([True, False, False, False]))
+    assert env.hold_seconds[0] == 0 and env.hold_seconds[2] > 0
+
+
+@torch.inference_mode()
+def test_v2_a_joint_past_its_limit_on_any_physics_step_ends_the_episode(env_v2):
+    env = env_v2
+    calls = []
+    unsafe = torch.tensor([False, False, True, False])
+
+    def joint_unsafe():
+        calls.append(None)
+        return unsafe if len(calls) == 4 else torch.zeros(N, dtype=torch.bool)
+
+    env._joint_unsafe = joint_unsafe
+    env.step()
+    assert env.terminated[2] and not env._gate_all[2]
+
+
+@torch.inference_mode()
+def test_v2_rewards_and_critic_inputs_are_finite(env_v2):
+    from gym.envs.go2.go2handstandhold_v2_config import Go2HandstandHoldV2RunnerCfg
+
+    env_v2.step()
+    assert env_v2.hold_progress.shape == (N, 2)
+    for name in vars(Go2HandstandHoldV2RunnerCfg.critic.reward.weights):
+        if not name.startswith("_"):
+            value = getattr(env_v2, f"_reward_{name}")()
+            assert value.shape == (N,) and torch.isfinite(value).all(), name
+    # The worst physics step is at least as bad as the last one.
+    assert (env_v2._slip_peak >= env_v2._front_slip - 1e-6).all()
+    assert (env_v2._front_load_low <= env_v2._loads[:, :2].amin(1) + 1e-6).all()
+
+
+def test_v2_starts_from_v1s_actor():
+    from gym.envs.go2.go2handstandhold_v2_config import Go2HandstandHoldV2RunnerCfg
+
+    path = Go2HandstandHoldV2RunnerCfg.runner.init_actor_from.format(
+        GYM_ROOT_DIR=GYM_ROOT_DIR
+    )
+    state = torch.load(path, weights_only=True)["actor_state_dict"]
+    assert state["NN.0.weight"].shape[1] == FRAME * 5  # v1's observation
+    assert state["NN.6.weight"].shape[0] == 12

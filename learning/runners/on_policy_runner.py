@@ -1,5 +1,7 @@
 import os
 import torch
+
+from gym import GYM_ROOT_DIR
 from tensordict import TensorDict
 
 from learning.utils import Logger
@@ -19,6 +21,24 @@ class OnPolicyRunner(BaseRunner):
             f"[OnPolicyRunner] num_steps_per_env={self.num_steps_per_env}"
             f" (batch_size={self.alg_cfg['batch_size']}, num_envs={env.num_envs})"
         )
+        # Optional: start the actor from an earlier run's weights. The critic
+        # starts fresh, so the actor is held for `actor_warmup_iterations`
+        # while the critic learns the values. Resuming (load) overrides both.
+        self.actor_warmup = 0
+        source = self.cfg.get("init_actor_from")
+        if source:
+            path = source.format(GYM_ROOT_DIR=GYM_ROOT_DIR)
+            state = torch.load(path, weights_only=True, map_location=self.device)
+            self.alg.actor.load_state_dict(state.get("actor_state_dict", state))
+            init_std = self.cfg.get("init_actor_std")
+            if init_std is not None:
+                with torch.no_grad():
+                    self.alg.actor.std.fill_(init_std)
+            self.actor_warmup = int(self.cfg.get("actor_warmup_iterations", 0))
+            print(
+                f"[OnPolicyRunner] actor initialised from {path}; "
+                f"critic-only updates for {self.actor_warmup} iterations"
+            )
 
     def learn(self, states_to_log_dict=None):
         n_policy_steps = int((1 / self.env.dt) / self.actor_cfg["frequency"])
@@ -60,7 +80,9 @@ class OnPolicyRunner(BaseRunner):
             self.burn_in_normalization()
 
         logger.tic("runtime")
+        first_it = self.it + 1
         for self.it in range(self.it + 1, tot_iter + 1):
+            self.alg.freeze_actor = self.it < first_it + self.actor_warmup
             logger.tic("iteration")
             logger.tic("collection")
 
@@ -228,6 +250,7 @@ class OnPolicyRunner(BaseRunner):
         loaded_dict = torch.load(path, weights_only=True, map_location=self.device)
         self.alg.actor.load_state_dict(loaded_dict["actor_state_dict"])
         self.alg.critic.load_state_dict(loaded_dict["critic_state_dict"])
+        self.actor_warmup = 0  # a resumed critic is already trained
         if load_optimizer:
             self.alg.optimizer.load_state_dict(loaded_dict["optimizer_state_dict"])
             self.alg.critic_optimizer.load_state_dict(

@@ -21,6 +21,7 @@ class_dict = {
     "Go2": ".go2.go2",
     "Go2Trot": ".go2.go2trot",
     "Go2HandstandHold": ".go2.go2handstandhold",
+    "Go2HandstandHoldV2": ".go2.go2handstandhold_v2",
 }
 
 config_dict = {
@@ -38,6 +39,7 @@ config_dict = {
     "Go2Cfg": ".go2.go2_config",
     "Go2TrotCfg": ".go2.go2trot_config",
     "Go2HandstandHoldCfg": ".go2.go2handstandhold_config",
+    "Go2HandstandHoldV2Cfg": ".go2.go2handstandhold_v2_config",
 }
 
 runner_config_dict = {
@@ -55,6 +57,7 @@ runner_config_dict = {
     "Go2RunnerCfg": ".go2.go2_config",
     "Go2TrotRunnerCfg": ".go2.go2trot_config",
     "Go2HandstandHoldRunnerCfg": ".go2.go2handstandhold_config",
+    "Go2HandstandHoldV2RunnerCfg": ".go2.go2handstandhold_v2_config",
 }
 
 task_dict = {
@@ -95,6 +98,11 @@ task_dict = {
         "Go2HandstandHold",
         "Go2HandstandHoldCfg",
         "Go2HandstandHoldRunnerCfg",
+    ],
+    "go2handstandhold_v2": [
+        "Go2HandstandHoldV2",
+        "Go2HandstandHoldV2Cfg",
+        "Go2HandstandHoldV2RunnerCfg",
     ],
 }
 

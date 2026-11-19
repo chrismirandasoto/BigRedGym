@@ -28,6 +28,7 @@ class PPO2:
         device="cpu",
         lr_range=[1e-4, 1e-2],
         lr_ratio=1.3,
+        dual_clip=None,
         **kwargs,
     ):
         self.device = device
@@ -53,6 +54,14 @@ class PPO2:
         self.lam = lam
         self.max_grad_norm = max_grad_norm
         self.use_clipped_value_loss = use_clipped_value_loss
+        # Dual-clip PPO (Ye et al. 2020): with a negative advantage the clipped
+        # objective is unbounded in the ratio, so one tail sample of a narrow
+        # policy can dominate a batch. Caps that loss at dual_clip * |A|.
+        self.dual_clip = dual_clip
+        # Set by the runner to train only the critic (e.g. a fresh critic
+        # behind an actor initialised from an earlier run).
+        self.freeze_actor = False
+        self.mean_surrogate_loss = 0.0
 
     def switch_to_train(self):
         self.actor.train()
@@ -68,6 +77,9 @@ class PPO2:
         )
         data["returns"] = data["advantages"] + data["values"]
         self.update_critic(data)
+        if self.freeze_actor:
+            self.mean_surrogate_loss = 0.0
+            return
         data["advantages"] = normalize(data["advantages"])
         self.update_actor(data)
 
@@ -181,7 +193,15 @@ class PPO2:
             surrogate_clipped = -torch.squeeze(batch["advantages"]) * torch.clamp(
                 ratio, 1.0 - self.clip_param, 1.0 + self.clip_param
             )
-            surrogate_loss = torch.max(surrogate, surrogate_clipped).mean()
+            surrogate_loss = torch.max(surrogate, surrogate_clipped)
+            if self.dual_clip is not None:
+                advantages = torch.squeeze(batch["advantages"])
+                surrogate_loss = torch.where(
+                    advantages < 0,
+                    torch.min(surrogate_loss, -self.dual_clip * advantages),
+                    surrogate_loss,
+                )
+            surrogate_loss = surrogate_loss.mean()
 
             loss = surrogate_loss - self.entropy_coef * entropy_batch.mean()
 

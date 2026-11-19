@@ -1,6 +1,69 @@
 # Handstand deployment and robustness: where it stands
 
-## Newest (2026-11-19): first hold training done; scores 0/100; fix planned
+## Newest (2026-11-20): v2 implemented, ready to train on MoLab
+
+**Train it** with `notebooks/molab_train.py` (branch `cm2233/handstand-deploy`):
+
+```python
+TASK = "go2handstandhold_v2"
+NUM_ENVS = 4096
+MAX_ITERATIONS = 1000
+EXPERIMENT_NAME = ""  # default: go2handstandhold_v2
+RESUME = False
+```
+
+No v1 files are needed on MoLab: v1's actor is in git
+(`resources/handstand/hold_v1_actor.pt`, from `model_2000.pt`) and training
+starts from it. The first 50 iterations train only the new critic
+(`mean_surrogate_loss` reads 0 then).
+
+**What changed from v1** (`gym/envs/go2/go2handstandhold_v2.py`, `_config.py`):
+
+- The strict gate is checked after every 2 ms physics step; a control step
+  counts only if all 10 pass. Front slip and load are scored by their worst
+  physics step. Flying v1's actor through this gate gives what the evaluator
+  gave: inside 83% of the time, longest unbroken hold median 0.8 s, 0/32 reach
+  5 s (evaluator: 91%, about 1 s, 0/100).
+- `unbroken_hold` (weight 3) pays `hold_seconds / 5`, so a break costs the
+  hold built up so far. The critic sees the hold's progress (`hold_progress`).
+- A joint past its speed limit or range ends the episode, as the evaluator's
+  `safe` flag ends the trial.
+- `action_rate` 0.2 to 1.0, `front_support` 0.5 to 1.0.
+- Training fixes found on the way (all opt-in, other tasks unchanged):
+  - v1's exploration noise had collapsed to the 0.05 floor on 10 of 12
+    joints. PPO ratios of tail samples then hit the cap, and the surrogate loss
+    exceeded 10 in 1292 of 2000 iterations from about iteration 170, which is
+    why v1 stopped improving. v2 resets every joint's noise to 0.03
+    (`init_actor_std`), floors it at 0.02, and uses dual-clip PPO
+    (`dual_clip = 3`), which bounds that loss.
+  - The default starting learning rate (1e-3) wrecked the trained actor in one
+    update; v2 starts at 1e-5 (range 1e-6 to 3e-4).
+
+CPU check (8 iterations, 64 worlds): stable surrogate (about 0.01), `strict_hold`
+0.49 to 0.55 after the warm-up.
+
+**What to watch:** `unbroken_hold` is the number that matters. v1's actor
+starts near 0.06; it should rise steadily, and a policy that holds a full 5 s
+unbroken in most episodes would show well above 1. `strict_hold` should stay
+at or above about 0.5.
+`termination` should not grow: if it climbs toward v1's early values, holding the
+feet still is costing balance (the stop rule below).
+
+**After training, score it against 67/100** (laptop, needs `artifacts/`):
+
+```bash
+.venv/bin/python scripts/export_handstand_bundle.py --name handstand_hold_v2 \
+  --hold-checkpoint logs/go2handstandhold_v2/<run>/model_1000.pt
+.venv/bin/python scripts/handstand_randomized.py compare --trials 100 \
+  --bundle logs/policies/handstand_hold_v2 --output output/hold_v2_compare_100
+```
+
+`deploy_exact` is the line to compare with 67. Checkpoints are saved every 50
+iterations; scoring an earlier one is the same command.
+
+---
+
+## 2026-11-19: first hold training done; scores 0/100
 
 The first `go2handstandhold` run trained to 2000 iterations on MoLab without
 NaNs (`logs/go2handstandhold/Nov19_03-34-56_/`, laptop only; git-ignored).
@@ -29,7 +92,7 @@ Training missed this for two reasons: it rewards *time* in the gate, not an
 *unbroken* hold, and it checks the gate once per 20 ms control step while the
 evaluator checks every 2 ms physics step.
 
-**Planned fix (v2, not implemented):**
+**Planned fix (v2; implemented 2026-11-20, see above):**
 
 1. Evaluate the strict gate on every physics substep, like
    `gym/envs/go2/handstand_replay.py::strict_balance`: the step only counts
