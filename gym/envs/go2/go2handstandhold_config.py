@@ -100,6 +100,9 @@ class Go2HandstandHoldRunnerCfg(Go2RunnerCfg):
         actions = ["hold_action"]
         add_noise = False  # sensor noise is part of the task
         init_noise_std = 0.3
+        # Floor on exploration noise, in policy units (x 0.5 rad). Without
+        # it the std shrank until PPO's ratio overflowed (two NaN runs).
+        std_min = 0.05
 
         class noise:
             pass

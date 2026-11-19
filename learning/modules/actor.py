@@ -15,9 +15,13 @@ class Actor(nn.Module):
         activation="elu",
         init_noise_std=1.0,
         normalize_obs=True,
+        std_min=None,
         **kwargs,
     ):
         super().__init__()
+        # Optional floor on the exploration noise; a std near zero makes the
+        # PPO probability ratio overflow.
+        self.std_min = std_min
 
         self._normalize_obs = normalize_obs
         if self._normalize_obs:
@@ -53,7 +57,8 @@ class Actor(nn.Module):
 
     def update_distribution(self, observations):
         mean = self.act_inference(observations)
-        self.distribution = Normal(mean, mean * 0.0 + self.std)
+        std = self.std if self.std_min is None else self.std.clamp(min=self.std_min)
+        self.distribution = Normal(mean, mean * 0.0 + std)
 
     def act(self, observations):
         self.update_distribution(observations)

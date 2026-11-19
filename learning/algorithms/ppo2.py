@@ -96,11 +96,25 @@ class PPO2:
 
             self.critic_optimizer.zero_grad()
             value_loss.backward()
-            nn.utils.clip_grad_norm_(self.critic.parameters(), self.max_grad_norm)
+            norm = nn.utils.clip_grad_norm_(
+                self.critic.parameters(), self.max_grad_norm
+            )
+            if not (torch.isfinite(value_loss) and torch.isfinite(norm)):
+                # One non-finite step would make every later output NaN.
+                self._skip("critic")
+                continue
             self.critic_optimizer.step()
             self.mean_value_loss += value_loss.item()
             counter += 1
-        self.mean_value_loss /= counter
+        self.mean_value_loss /= max(counter, 1)
+
+    def _skip(self, part):
+        self.skipped_steps = getattr(self, "skipped_steps", 0) + 1
+        print(
+            f"[PPO2] skipped a non-finite {part} gradient step "
+            f"({self.skipped_steps} so far)",
+            flush=True,
+        )
 
     def update_actor(self, data):
         self.mean_surrogate_loss = 0
@@ -155,9 +169,13 @@ class PPO2:
                         param_group["lr"] = self.learning_rate
 
             # * Surrogate loss
+            # Capped so a tiny std cannot overflow exp(); real updates stay
+            # far inside the PPO clip range anyway.
             ratio = torch.exp(
-                actions_log_prob_batch
-                - torch.squeeze(batch["old_actions_log_prob_batch"])
+                (
+                    actions_log_prob_batch
+                    - torch.squeeze(batch["old_actions_log_prob_batch"])
+                ).clamp(-20.0, 20.0)
             )
             surrogate = -torch.squeeze(batch["advantages"]) * ratio
             surrogate_clipped = -torch.squeeze(batch["advantages"]) * torch.clamp(
@@ -170,8 +188,11 @@ class PPO2:
             # * Gradient step
             self.optimizer.zero_grad()
             loss.backward()
-            nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
+            norm = nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
+            if not (torch.isfinite(loss) and torch.isfinite(norm)):
+                self._skip("actor")
+                continue
             self.optimizer.step()
             self.mean_surrogate_loss += surrogate_loss.item()
             counter += 1
-        self.mean_surrogate_loss /= counter
+        self.mean_surrogate_loss /= max(counter, 1)
