@@ -49,6 +49,13 @@ def get_play_args(argv=None):
     )
     parser.add_argument("--headless", action="store_true", default=False)
     parser.add_argument(
+        "--reset_mode",
+        type=str,
+        default="reset_to_basic",
+        help="init_state.reset_mode for playback; 'task' keeps the task's own "
+        "(e.g. go2handstandhold needs its reset_to_handover)",
+    )
+    parser.add_argument(
         "--backend",
         type=str,
         default="mujoco",
@@ -93,7 +100,8 @@ def setup(args):
         env_cfg.commands.resampling_time = 9999
     if hasattr(env_cfg, "push_robots"):
         env_cfg.push_robots.toggle = False
-    env_cfg.init_state.reset_mode = "reset_to_basic"
+    if args.reset_mode != "task":
+        env_cfg.init_state.reset_mode = args.reset_mode
     if hasattr(env_cfg, "viewer"):
         env_cfg.viewer.show_ui = args.viewer_ui
 

@@ -319,9 +319,11 @@ def run_deployed(env, steps=400, start="direct", height="feet", compare=True):
         if controller._estop_flag:
             break
         if compare:
+            # The simulator gives the 47-value capture observation; a hold
+            # bundle appends past frames (hs_history) after it.
+            observed = controller.last_obs.numpy()[: expected.size]
             observation_error = max(
-                observation_error,
-                float(abs(controller.last_obs.numpy() - expected).max()),
+                observation_error, float(abs(observed - expected).max())
             )
         target = published_target(controller)
         _, _, done = env.step((target - nominal) / 2)

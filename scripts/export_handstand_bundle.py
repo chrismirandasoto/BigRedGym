@@ -35,7 +35,9 @@ from go2_deploy.handstand.policy import CaptureDeployPolicy  # noqa: E402
 from go2_deploy.policy_bundle import export_bundle, load_bundle  # noqa: E402
 
 TRAJECTORY_SHA256 = "21d2c7ca8a9b55b27d1a58d4cc7fae17fdbea2dbedee8ecbacd56cc324e9bb92"
-PARITY_TOLERANCE = 1e-6
+# Action units (x 2 rad). float32 rounding through a trained hold network
+# reaches ~2e-6; 1e-5 is 2e-5 rad, far below the 5e-4 rad encoder noise.
+PARITY_TOLERANCE = 1e-5
 
 
 def git_commit():

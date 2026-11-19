@@ -1,6 +1,84 @@
 # Handstand deployment and robustness: where it stands
 
-## Newest: robust hold policy (Path 2), ready to train on MoLab
+## Newest (2026-11-19): first hold training done; scores 0/100; fix planned
+
+The first `go2handstandhold` run trained to 2000 iterations on MoLab without
+NaNs (`logs/go2handstandhold/Nov19_03-34-56_/`, laptop only; git-ignored).
+
+**Result on the released 100 seeds** (`compare`, same seeds as 67/100):
+0/100, against 67/100 for the released controller. It rarely falls (5
+failures on the safety gate, against the baseline's 28), but 95 trials never hold
+the strict gate for 5 continuous seconds. Results are in
+`output/hold_v1_compare_100/` (laptop only). That run used the
+foot-correction bundle, so its direct-start rows broke on the harness bug
+fixed below; the same failure shows up without foot correction (seeds
+301001-3 checked by hand).
+
+**Why:** after the hand-over the policy is inside the strict gate 91% of the
+time but breaks it about 20 times per run (longest unbroken hold about 1 s).
+The breaks are almost all front-foot chatter:
+
+| Gate condition failing (seed 301001-3, after hand-over) | share of 2 ms samples |
+| --- | ---: |
+| `slip`: a front foot moving faster than 5 cm/s | 7-9% |
+| `front_support`: a front foot under 5% of body weight | 5-6% |
+| `angular_speed` | 1% |
+
+The released controller is inside the gate 100% of the time on the same seeds.
+Training missed this for two reasons: it rewards *time* in the gate, not an
+*unbroken* hold, and it checks the gate once per 20 ms control step while the
+evaluator checks every 2 ms physics step.
+
+**Planned fix (v2, not implemented):**
+
+1. Evaluate the strict gate on every physics substep, like
+   `gym/envs/go2/handstand_replay.py::strict_balance`: the step only counts
+   if all 10 substeps pass.
+2. Reward the current unbroken hold (for example
+   `strict_hold * min(hold_seconds / 5, 1)`) so that a break costs something.
+3. Make the training's front slip (max front-foot speed) and front load
+   match the evaluator's definitions exactly.
+4. Raise `action_rate` (currently 0.2) to discourage jitter.
+5. Resume from `model_2000.pt` instead of starting over: network, observations
+   and actions are unchanged. Expect 500-1000 iterations.
+
+**Stop rule for v2:** if the longest unbroken hold rises but falls climb back
+toward the baseline's 28/100, keeping the feet still and surviving the errors
+are fighting each other. Then try smoother (time-correlated) exploration, or a
+hold policy that corrects the released balance law instead of replacing it.
+
+**How to score a hold checkpoint against 67/100:**
+
+```bash
+# No --foot-correction: the 67/100 bundle has it off, and it changes the kick.
+.venv/bin/python scripts/export_handstand_bundle.py --name handstand_hold_v1_nofeet \
+  --hold-checkpoint logs/go2handstandhold/Nov19_03-34-56_/model_2000.pt
+.venv/bin/python scripts/handstand_randomized.py compare --trials 100 \
+  --bundle logs/policies/handstand_hold_v1_nofeet --output output/hold_v1_compare_100
+# `native` is the released controller (67); `deploy_exact` is the fair comparison.
+```
+
+**Watching it** (only the hold after hand-over; the robot starts already up):
+
+```bash
+.venv/bin/python scripts/play.py --task go2handstandhold --checkpoint 2000 \
+  --reset_mode task --num_envs 4
+```
+
+`--reset_mode task` is needed (play.py otherwise forces a standing start), and
+`--checkpoint` avoids picking up the Windows `:Zone.Identifier` files that
+came with the copied logs.
+
+**Fixed on 2026-11-19 to get here:** `scripts/play.py --reset_mode`;
+exporter parity tolerance 1e-6 to 1e-5 action units (the trained network
+rounds to 1.8e-6, which is 3.5e-6 rad); `deploy_sil.run_deployed` compared a
+215-value hold observation against the 47-value one and threw a ValueError, which
+the trial runner records as an invalid start, so every direct-start hold
+trial read `0 / 0`.
+
+---
+
+## Robust hold policy (Path 2): how it was set up for MoLab
 
 Added 2026-11-18. Keep the released kick (it mostly works) and replace what
 happens after the 2.2 s hand-over with a policy trained under sensor and
